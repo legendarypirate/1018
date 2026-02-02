@@ -1,18 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Select, Tag, Switch, DatePicker, notification } from 'antd';
+import { Table, Button, Select, DatePicker, notification } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
-import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
-import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import { CloseOutlined, DownloadOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 
-dayjs.extend(isSameOrAfter);
-dayjs.extend(isSameOrBefore);
-
-const { Option } = Select;
 const { RangePicker } = DatePicker;
 
 // ---- Delivery interface ----
@@ -33,83 +27,51 @@ interface Delivery {
   delivered_at?: string;
 }
 
-// Delivery Table Columns
-const deliveryColumns: ColumnsType<Delivery> = [
-  {
-    title: 'Үүссэн огноо',
-    dataIndex: 'createdAt',
-    render: (text: string) => dayjs(text).format('YYYY-MM-DD hh:mm A'),
-  },
-  {
-    title: 'Хүргэсэн огноо',
-    dataIndex: 'delivered_at',
-    render: (text: string) => text ? dayjs(text).format('YYYY-MM-DD hh:mm A') : '-',
-  },
-  {
-    title: 'Мерчанд нэр',
-    dataIndex: ['merchant', 'username'],
-    render: (_, record) => record.merchant?.username || '-',
-  },
-  { title: 'Утас', dataIndex: 'phone' },
-  { title: 'Хаяг', dataIndex: 'address' },
-  {
-    title: 'Төлөв',
-    dataIndex: 'status_name',
-    render: (status_name: { status: string; color: string }) => (
-      <Tag color={status_name.color}>{status_name.status}</Tag>
-    ),
-  },
-  { 
-    title: 'Үнэ', 
-    dataIndex: 'price',
-    render: (price: number) => price.toLocaleString() + ' ₮',
-  },
-  { title: 'Тайлбар', dataIndex: 'comment' },
-  {
-    title: 'Жолооч нэр',
-    dataIndex: ['driver', 'username'],
-    render: (_, record) => record.driver?.username || '-',
-  },
-];
-
-// ---- Summary interface ----
-type SummaryType = {
+// ---- Report Row interface ----
+interface ReportRow {
   key: string;
+  dateRange: string;
   driverName: string;
+  totalDeliveries: number;
   totalPrice: number;
-  forDriver: number;
-  account: number;
-  numberDelivery?: number;
-};
+  salary: number;
+  difference: number;
+}
 
-const summaryColumns: ColumnsType<SummaryType> = [
+// Report Table Columns
+const reportColumns: ColumnsType<ReportRow> = [
   {
-    title: 'нэр',
+    title: 'Огноо',
+    dataIndex: 'dateRange',
+    key: 'dateRange',
+  },
+  {
+    title: 'Жолооч',
     dataIndex: 'driverName',
     key: 'driverName',
   },
   {
     title: 'Нийт хүргэлт',
-    dataIndex: 'numberDelivery',
-    key: 'numberDelivery',
-    render: (value?: number) => value?.toLocaleString() ?? '—',
+    dataIndex: 'totalDeliveries',
+    key: 'totalDeliveries',
+    render: (value: number) => value.toLocaleString(),
   },
   {
-    title: 'Нийт үнэ',
+    title: 'Нийт тооцоо',
     dataIndex: 'totalPrice',
     key: 'totalPrice',
     render: (value: number) => value.toLocaleString() + ' ₮',
   },
   {
-    title: 'Жолоочид олгох',
-    dataIndex: 'forDriver',
-    key: 'forDriver',
+    title: 'Цалин',
+    dataIndex: 'salary',
+    key: 'salary',
     render: (value: number) => value.toLocaleString() + ' ₮',
   },
   {
     title: 'Зөрүү',
-    dataIndex: 'account',
-    key: 'account',
+    dataIndex: 'difference',
+    key: 'difference',
     render: (value: number) => value.toLocaleString() + ' ₮',
   },
 ];
@@ -120,57 +82,16 @@ type OptionType = {
 };
 
 export default function DeliveryPage() {
-  // Delivery states
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 100, total: 0 });
-  const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+  // Report states
+  const [loading, setLoading] = useState(false);
+  const [reportData, setReportData] = useState<ReportRow[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Summary & filters states
-  const [merchantFilter, setMerchantFilter] = useState<string | null>(null);
-  const [secondOptions, setSecondOptions] = useState<OptionType[]>([]);
-  const [secondValue, setSecondValue] = useState<string | null>(null);
+  // Filters states
+  const [driverOptions, setDriverOptions] = useState<OptionType[]>([]);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
-  const [isReportMergeMode, setIsReportMergeMode] = useState(true);
-  const [summary, setSummary] = useState<SummaryType | null>(null);
-  const [fetchingSummary, setFetchingSummary] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [tableData, setTableData] = useState<SummaryType[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [deliveryList, setDeliveryList] = useState<Delivery[]>([]);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-
- const rowSelection = {
-  selectedRowKeys,
-  onChange: (selectedKeys: React.Key[], selectedRows: Delivery[]) => {
-    setSelectedRowKeys(selectedKeys);
-
-    // Calculate total price - only include deliveries with status 3
-    const totalPrice = selectedRows.reduce((sum, row) => {
-      return row.status === 3 ? sum + Number(row.price) : sum;
-    }, 0);
-    
-    const numberDelivery = selectedRows.length;
-    const isMerchant = merchantFilter === '1';
-    const feePerDelivery = isMerchant ? 6000 : 7000;
-    const totalFee = numberDelivery * feePerDelivery;
-    const account = totalPrice - totalFee;
-    
-    const driverName = isMerchant
-      ? selectedRows[0]?.merchant?.username || ''
-      : selectedRows[0]?.driver?.username || '';
-    
-    setTableData([
-      {
-        key: 'summary',
-        driverName,
-        totalPrice,
-        forDriver: totalFee,
-        account,
-        numberDelivery,
-      },
-    ]);
-  },
-};
 
   const openNotification = (type: 'success' | 'error', messageText: string) => {
     notification.open({
@@ -185,103 +106,177 @@ export default function DeliveryPage() {
       closeIcon: <CloseOutlined style={{ color: '#fff' }} />,
     });
   };
-  
-  const handleReportMerge = async () => {
-  if (!selectedRowKeys || selectedRowKeys.length === 0) {
-    alert("Please select at least one delivery to report.");
-    return;
-  }
 
-  try {
-    setLoading(true);
+  // Fetch drivers on mount
+  useEffect(() => {
+    document.title = 'Тайлан харах';
 
-    // Determine the endpoint based on merchant filter
-    const endpoint = merchantFilter === '1' 
-      ? `${process.env.NEXT_PUBLIC_API_URL}/api/report/merchant`
-      : `${process.env.NEXT_PUBLIC_API_URL}/api/report/driver`;
+    const fetchDrivers = async () => {
+      setLoadingOptions(true);
+      try {
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/api/user/drivers`;
+        const response = await fetch(url);
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data)) {
+          setDriverOptions(result.data);
+        } else {
+          setDriverOptions([]);
+        }
+      } catch (error) {
+        console.error('Fetch error:', error);
+        setDriverOptions([]);
+      } finally {
+        setLoadingOptions(false);
+      }
+    };
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        delivery_ids: selectedRowKeys,
-      }),
-    });
+    fetchDrivers();
+  }, []);
 
-    const result = await response.json();
-
-    if (!response.ok || !result.success) {
-      throw new Error(result.message || 'Failed to report deliveries.');
+  // Load report data
+  const loadReportData = async () => {
+    if (!dateRange[0] || !dateRange[1]) {
+      openNotification('error', 'Огноо сонгоно уу');
+      return;
     }
 
-    openNotification('success', 'Тайлан амжилттай нийллээ.');
-    setSelectedRowKeys([]);
+    setLoading(true);
+    setFetchError(null);
 
-  } catch (error: any) {
-    console.error("Error during report merge:", error);
-    openNotification('error', `Алдаа гарлаа: ${error.message || 'Unknown error'}`);
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      const startDate = dateRange[0].format('YYYY-MM-DD');
+      const endDate = dateRange[1].format('YYYY-MM-DD');
 
-  // Excel export function with proper numeric formatting
+      // Fetch all deliveries with status 3 (delivered) filtered by delivered_at
+      // Use findAllWithDate which filters by delivered_at and status 3
+      let deliveryUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/delivery/findAllWithDate?page=1&limit=10000&startDate=${startDate}&endDate=${endDate}`;
+      
+      if (selectedDriverId) {
+        deliveryUrl += `&driverId=${selectedDriverId}`;
+      }
+
+      const deliveryRes = await fetch(deliveryUrl);
+      if (!deliveryRes.ok) throw new Error(`Delivery API error: ${deliveryRes.status}`);
+
+      const deliveryData = await deliveryRes.json();
+
+      if (!deliveryData.success || !Array.isArray(deliveryData.data)) {
+        throw new Error('Invalid delivery data format');
+      }
+
+      // Filter only status 3 deliveries
+      const status3Deliveries = deliveryData.data.filter(
+        (d: Delivery) => d.status === 3 || d.status === '3'
+      );
+
+      // Group deliveries by driver
+      const groupedByDriver: Record<string, Delivery[]> = {};
+      status3Deliveries.forEach((delivery: Delivery) => {
+        const driverName = delivery.driver?.username || 'No Driver';
+        if (!groupedByDriver[driverName]) {
+          groupedByDriver[driverName] = [];
+        }
+        groupedByDriver[driverName].push(delivery);
+      });
+
+      // Calculate report rows
+      const reportRows: ReportRow[] = Object.entries(groupedByDriver).map(
+        ([driverName, deliveries]) => {
+          const totalDeliveries = deliveries.length;
+          const totalPrice = deliveries.reduce(
+            (sum, d) => sum + parseFloat(d.price.toString()),
+            0
+          );
+          // Salary is 7k per delivery
+          const salary = totalDeliveries * 7000;
+          const difference = totalPrice - salary;
+
+          return {
+            key: driverName,
+            dateRange: `${startDate} ~ ${endDate}`,
+            driverName,
+            totalDeliveries,
+            totalPrice,
+            salary,
+            difference,
+          };
+        }
+      );
+
+      setReportData(reportRows);
+    } catch (error: any) {
+      console.error('Error loading report data:', error);
+      setFetchError(error.message || 'Failed to load report data');
+      openNotification('error', `Алдаа гарлаа: ${error.message || 'Unknown error'}`);
+      setReportData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Excel export function
   const exportToExcel = () => {
-    if (deliveryList.length === 0) {
+    if (reportData.length === 0) {
       openNotification('error', 'Экспортлох өгөгдөл байхгүй байна');
       return;
     }
 
     try {
-      // Prepare data for export (excluding driver information)
-      const dataForExport = deliveryList.map(delivery => ({
-        'Үүссэн огноо': dayjs(delivery.createdAt).format('YYYY-MM-DD hh:mm A'),
-        'Хүргэсэн огноо': delivery.delivered_at ? dayjs(delivery.delivered_at).format('YYYY-MM-DD hh:mm A') : '-',
-        'Мерчанд нэр': delivery.merchant?.username || '-',
-        'Утас': delivery.phone,
-        'Хаяг': delivery.address,
-        'Төлөв': delivery.status_name?.status || '',
-        // Ensure price is exported as a number for Excel to recognize it
-        'Үнэ': delivery.price,
-        'Тайлбар': delivery.comment,
-      }));
-
-      // Create worksheet with column types specified
-      const ws = XLSX.utils.json_to_sheet(dataForExport);
-      
-      // Set column widths for better readability
-      const colWidths = [
-        { wch: 20 }, // Үүссэн огноо
-        { wch: 20 }, // Хүргэсэн огноо
-        { wch: 20 }, // Мерчанд нэр
-        { wch: 15 }, // Утас
-        { wch: 30 }, // Хаяг
-        { wch: 15 }, // Төлөв
-        { wch: 15 }, // Үнэ (this will be formatted as number)
-        { wch: 30 }, // Тайлбар
-      ];
-      ws['!cols'] = colWidths;
-      
-      // Format the price column as number with 2 decimal places
-      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        const priceCellRef = XLSX.utils.encode_cell({r: R, c: 6}); // Column G (7th column, 0-indexed 6)
-        if (ws[priceCellRef]) {
-          // Ensure the cell is treated as a number
-          ws[priceCellRef].t = 'n';
-          // Format as number with 2 decimal places
-          ws[priceCellRef].z = '#,##0.00';
+      // Calculate totals
+      const totals = reportData.reduce(
+        (acc, row) => {
+          acc.totalDeliveries += row.totalDeliveries;
+          acc.totalPrice += row.totalPrice;
+          acc.salary += row.salary;
+          acc.difference += row.difference;
+          return acc;
+        },
+        {
+          totalDeliveries: 0,
+          totalPrice: 0,
+          salary: 0,
+          difference: 0,
         }
-      }
-      
-      // Create workbook
+      );
+
+      // Prepare data for Excel
+      const headers = ['Огноо', 'Жолооч', 'Нийт хүргэлт', 'Нийт тооцоо', 'Цалин', 'Зөрүү'];
+      const excelData = [
+        headers,
+        ...reportData.map((row) => [
+          row.dateRange,
+          row.driverName,
+          row.totalDeliveries,
+          row.totalPrice,
+          row.salary,
+          row.difference,
+        ]),
+        ['Нийт', '', totals.totalDeliveries, totals.totalPrice, totals.salary, totals.difference],
+      ];
+
+      // Create workbook and worksheet
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Хүргэлтийн мэдээлэл');
-      
-      // Generate Excel file
-      const fileName = `delivery_report_${dayjs().format('YYYY-MM-DD_HH-mm')}.xlsx`;
-      XLSX.writeFile(wb, fileName);
-      
+      const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 25 }, // Огноо
+        { wch: 20 }, // Жолооч
+        { wch: 15 }, // Нийт хүргэлт
+        { wch: 15 }, // Нийт тооцоо
+        { wch: 15 }, // Цалин
+        { wch: 15 }, // Зөрүү
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Report');
+
+      // Generate filename with date range
+      const startDate = dateRange[0]?.format('YYYY-MM-DD') || '';
+      const endDate = dateRange[1]?.format('YYYY-MM-DD') || '';
+      const filename = `Report_${startDate}_${endDate}_driver.xlsx`;
+
+      // Save file
+      XLSX.writeFile(wb, filename);
       openNotification('success', 'Excel файл амжилттай экспортлогдлоо');
     } catch (error) {
       console.error('Excel export error:', error);
@@ -289,233 +284,96 @@ export default function DeliveryPage() {
     }
   };
 
-  // Fetch options when merchantFilter changes
-  useEffect(() => {
-    document.title = 'Тайлан нийлэх';
-
-    const fetchOptions = async () => {
-      if (!merchantFilter) {
-        setSecondOptions([]);
-        return;
-      }
-      setLoadingOptions(true);
-      try {
-        const url =
-          merchantFilter === '1'
-            ? `${process.env.NEXT_PUBLIC_API_URL}/api/user/merchant`
-            : `${process.env.NEXT_PUBLIC_API_URL}/api/user/drivers`;
-
-        const response = await fetch(url);
-        const result = await response.json();
-        if (result.success && Array.isArray(result.data)) {
-          setSecondOptions(result.data);
-        } else {
-          setSecondOptions([]);
-        }
-      } catch (error) {
-        console.error('Fetch error:', error);
-        setSecondOptions([]);
-      } finally {
-        setLoadingOptions(false);
-      }
-    };
-
-    fetchOptions();
-    setSecondValue(null);
-    setSummary(null);
-    setTableData([]);
-  }, [merchantFilter]);
-
-  // Fetch driver summary function
-  const fetchDriverSummary = async (
-    id: string,
-    startDate: string,
-    endDate: string,
-    page: number,
-    pageSize: number
-  ) => {
-    setFetchingSummary(true);
-    setFetchError(null);
-
-    try {
-      const queryParam = merchantFilter === '1' ? 'merchantId' : 'driverId';
-
-      const deliveryUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/delivery/findAllWithDate?page=${page}&limit=${pageSize}&startDate=${startDate}&endDate=${endDate}&${queryParam}=${id}`;
-      
-      const deliveryRes = await fetch(deliveryUrl);
-      if (!deliveryRes.ok) throw new Error(`Delivery API error: ${deliveryRes.status}`);
-
-      const deliveryData = await deliveryRes.json();
-
-      if (deliveryData.success && Array.isArray(deliveryData.data)) {
-        setDeliveryList(deliveryData.data);
-
-        setPagination({
-          current: page,
-          pageSize,
-          total: deliveryData.total || deliveryData.count || 0,
-        });
-      } else {
-        throw new Error('Invalid delivery data format');
-      }
-    } catch (error: any) {
-      setFetchError(`Error: ${error.message || error}`);
-      setSummary(null);
-      setTableData([]);
-      setDeliveryList([]);
-    } finally {
-      setFetchingSummary(false);
+  // Calculate totals
+  const totals = reportData.reduce(
+    (acc, row) => {
+      acc.totalDeliveries += row.totalDeliveries;
+      acc.totalPrice += row.totalPrice;
+      acc.salary += row.salary;
+      acc.difference += row.difference;
+      return acc;
+    },
+    {
+      totalDeliveries: 0,
+      totalPrice: 0,
+      salary: 0,
+      difference: 0,
     }
-  };
+  );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* Filters & Controls */}
-      <div className="flex gap-4 items-center w-full p-4" style={{ flexShrink: 0 }}>
-        <Switch
-          checked={isReportMergeMode}
-          onChange={(checked) => {
-            setIsReportMergeMode(checked);
-            setDateRange([null, null]);
-          }}
-          checkedChildren="Тайлан нийлэх"
-          unCheckedChildren="Тайлан харах"
-          style={{
-            backgroundColor: isReportMergeMode ? undefined : '#52c41a',
-            color: 'white',
-          }}
-        />
-        <Select
-          value={merchantFilter}
-          onChange={(value) => {
-            setMerchantFilter(value);
-            setSummary(null);
-            setFetchError(null);
-            setTableData([]);
-          }}
-          placeholder="Сонгох"
-          style={{ width: 150 }}
-          allowClear
-        >
-          <Option value="1">Мерчант</Option>
-          <Option value="2">Жолооч</Option>
-        </Select>
+    <div style={{ padding: '24px' }}>
+      <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>Тайлан</h1>
 
-        <Select
-          value={secondValue}
-          onChange={(value) => {
-            setSecondValue(value);
-            setSummary(null);
-            setFetchError(null);
-            setTableData([]);
-          }}
-          placeholder="Select Option"
-          style={{ width: 200 }}
-          loading={loadingOptions}
-          allowClear
-          disabled={!merchantFilter}
-          options={secondOptions.map((o) => ({ label: o.username, value: o.id }))}
-        />
+      {/* Filters Row */}
+      <div style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <RangePicker
           value={dateRange}
           onChange={(dates) => {
             setDateRange(dates ?? [null, null]);
-            if (dates && dates[0] && dates[1] && secondValue) {
-              fetchDriverSummary(
-                secondValue,
-                dates[0].format('YYYY-MM-DD'),
-                dates[1].format('YYYY-MM-DD'),
-                pagination.current,
-                pagination.pageSize
-              );
-            }
           }}
           format="YYYY-MM-DD"
+          style={{ width: 300 }}
         />
-      </div>
-      
-      <div
-        style={{
-          background: '#fff',
-          padding: '16px 24px',
-          borderTop: '1px solid #ddd',
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <Space>
-            <div>{selectedRowKeys.length} item(s) selected</div>
-            <Button
-              type="primary"
-              onClick={handleReportMerge}
-              disabled={selectedRowKeys.length === 0}
-            >
-              Тайлан нийлэх
-            </Button>
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={exportToExcel}
-              disabled={deliveryList.length === 0}
-              type="default"
-            >
-              Excel татах
-            </Button>
-          </Space>
-          {fetchError && <div style={{ color: 'red' }}>{fetchError}</div>}
-        </div>
 
-        <Table
-          columns={summaryColumns}
-          dataSource={tableData}
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total: pagination.total,
-            showSizeChanger: true,
-            onChange: (page, pageSize) => {
-              setPagination((prev) => ({
-                ...prev,
-                current: page,
-                pageSize: pageSize,
-              }));
-            },
+        <Select
+          value={selectedDriverId}
+          onChange={(value) => {
+            setSelectedDriverId(value);
           }}
-          loading={fetchingSummary}
+          placeholder="Бүх жолооч"
+          style={{ width: 200 }}
+          loading={loadingOptions}
+          allowClear
+          options={driverOptions.map((o) => ({ label: o.username, value: o.id }))}
+        />
+
+        <Button type="primary" onClick={loadReportData} loading={loading}>
+          Хайх
+        </Button>
+
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={exportToExcel}
+          disabled={reportData.length === 0}
+        >
+          Excel татах
+        </Button>
+
+        {fetchError && (
+          <div style={{ color: 'red', marginLeft: '16px' }}>{fetchError}</div>
+        )}
+      </div>
+
+      {/* Report Table */}
+      <div style={{ background: '#fff', borderRadius: '4px', overflow: 'hidden' }}>
+        <Table
+          columns={reportColumns}
+          dataSource={reportData}
+          loading={loading}
           rowKey="key"
-          size="small"
-          scroll={{ x: 'max-content' }}
+          pagination={false}
           locale={{ emptyText: 'Тайлан байхгүй байна' }}
-        />
-      </div>
-
-      {/* Delivery Data Table */}
-      <div style={{ flexGrow: 1, overflowY: 'auto', padding: '0 24px' }}>
-        <Table
-          rowSelection={rowSelection}
-          columns={deliveryColumns}
-          dataSource={deliveryList}
-          loading={loadingDeliveries}
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total: pagination.total,
-            showSizeChanger: true,
-            pageSizeOptions: ['100', '200', '500', '1000'],
-            onChange: (page, pageSize) => {
-              setPagination({ ...pagination, current: page, pageSize });
-              if (dateRange[0] && dateRange[1] && secondValue) {
-                fetchDriverSummary(
-                  secondValue,
-                  dateRange[0].format('YYYY-MM-DD'),
-                  dateRange[1].format('YYYY-MM-DD'),
-                  page,
-                  pageSize
-                );
-              }
-            },
-          }}
-          rowKey="id"
-          scroll={{ x: 1200 }}
+          summary={() => (
+            <Table.Summary fixed>
+              <Table.Summary.Row style={{ backgroundColor: '#fafafa', fontWeight: 'bold' }}>
+                <Table.Summary.Cell index={0}>Нийт</Table.Summary.Cell>
+                <Table.Summary.Cell index={1}></Table.Summary.Cell>
+                <Table.Summary.Cell index={2}>
+                  {totals.totalDeliveries.toLocaleString()}
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={3}>
+                  {totals.totalPrice.toLocaleString()} ₮
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={4}>
+                  {totals.salary.toLocaleString()} ₮
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={5}>
+                  {totals.difference.toLocaleString()} ₮
+                </Table.Summary.Cell>
+              </Table.Summary.Row>
+            </Table.Summary>
+          )}
         />
       </div>
     </div>
