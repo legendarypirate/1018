@@ -9,6 +9,9 @@ module.exports = app => {
   
     router.post("/merchant", report.getTotalPriceByMerchantAndDate);
 
+    // Get driver goods report by status
+    router.get("/driver-goods", report.getDriverGoodsReport);
+
     // Retrieve all Tutorials
     router.get("/", report.findAll);
   

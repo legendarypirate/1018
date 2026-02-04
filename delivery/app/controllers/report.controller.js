@@ -404,3 +404,123 @@ exports.findAllPublished = (req, res) => {
       });
     });
 };
+
+// Get driver goods report by status
+exports.getDriverGoodsReport = async (req, res) => {
+  try {
+    const { driver_id, start_date, end_date } = req.query;
+
+    if (!driver_id) {
+      return res.status(400).json({
+        success: false,
+        message: "driver_id is required",
+      });
+    }
+
+    if (!start_date || !end_date) {
+      return res.status(400).json({
+        success: false,
+        message: "start_date and end_date are required",
+      });
+    }
+
+    // Build date range for createdAt (not delivered_at)
+    const startDateTime = new Date(`${start_date}T00:00:00+08:00`);
+    const endDateTime = new Date(`${end_date}T23:59:59+08:00`);
+
+    // Fetch all deliveries for the driver within the date range
+    const deliveries = await Delivery.findAll({
+      where: {
+        driver_id: parseInt(driver_id),
+        createdAt: {
+          [Op.between]: [startDateTime, endDateTime],
+        },
+        is_deleted: false,
+      },
+      include: [
+        {
+          model: User,
+          as: 'driver',
+          attributes: ['id', 'username'],
+        },
+      ],
+      attributes: ['id', 'goods', 'number', 'status', 'createdAt'],
+    });
+
+    // Get all statuses to ensure we have columns for all
+    const allStatuses = await Status.findAll({
+      attributes: ['id', 'status', 'color'],
+      order: [['id', 'ASC']],
+    });
+
+    // Create a map to store goods data
+    // Key: normalized goods name (lowercase), Value: goods data with status counts
+    const goodsMap = new Map();
+
+    deliveries.forEach((delivery) => {
+      const rawGoodsName = delivery.goods || 'Бараа нэргүй';
+      const goodsName = rawGoodsName.trim();
+      const normalizedKey = goodsName.toLowerCase();
+      const number = parseFloat(delivery.number || '0') || 0;
+      const status = delivery.status;
+
+      if (!goodsMap.has(normalizedKey)) {
+        // Initialize with all statuses set to 0
+        const statusCounts = {};
+        allStatuses.forEach((s) => {
+          statusCounts[s.id] = 0;
+        });
+
+        goodsMap.set(normalizedKey, {
+          goodsName: goodsName, // Store original name for display
+          totalNumber: 0,
+          statusCounts: statusCounts,
+          totalDeliveries: 0,
+        });
+      }
+
+      const goodsData = goodsMap.get(normalizedKey);
+      goodsData.totalNumber += number;
+      goodsData.totalDeliveries += 1;
+
+      // Add to the specific status count
+      if (goodsData.statusCounts.hasOwnProperty(status)) {
+        goodsData.statusCounts[status] += number;
+      }
+    });
+
+    // Convert to array format
+    const goodsReport = Array.from(goodsMap.values()).map((data) => ({
+      goodsName: data.goodsName,
+      totalNumber: data.totalNumber,
+      statusCounts: data.statusCounts,
+      totalDeliveries: data.totalDeliveries,
+    }));
+
+    // Get driver name
+    const driverName = deliveries.length > 0 
+      ? deliveries[0].driver?.username || 'Тодорхойгүй'
+      : 'Тодорхойгүй';
+
+    res.json({
+      success: true,
+      data: {
+        driverId: parseInt(driver_id),
+        driverName,
+        goods: goodsReport,
+        statuses: allStatuses.map(s => ({
+          id: s.id,
+          status: s.status,
+          color: s.color,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Error in getDriverGoodsReport:', error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate driver goods report.",
+      error: error.message,
+    });
+  }
+};

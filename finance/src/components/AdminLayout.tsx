@@ -196,7 +196,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         permission: 'reports:view_reports',
         children: [
           { key: '/admin/report', icon: <FileTextOutlined />, label: 'Тайлан', permission: 'log:view_log' },
-          { key: '/admin/summary', icon: <BarChartOutlined />, label: 'Тайлан жагсаалт', permission: 'reports:view_reports' },
+          { key: '/admin/summary', icon: <BarChartOutlined />, label: 'Барааны тайлан', permission: 'reports:view_reports' },
         ],
       },
       { key: '/admin/log', icon: <FileTextOutlined />, label: 'Үйлдлийн лог', permission: 'log:view_log' },

@@ -6,7 +6,7 @@ const app = express();
 
 // CORS configuration to allow only a specific origin
 var corsOptions = {
-  origin: "https://1018.teensclub.mn"
+  origin: "http://localhost:3020"
 };
 
 // Enable CORS
