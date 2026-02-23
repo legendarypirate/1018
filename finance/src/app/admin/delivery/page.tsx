@@ -1,4 +1,5 @@
-// app/admin/delivery/page.tsx  (Server Component by default)
+'use client';
+// app/admin/delivery/page.tsx
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { Spin } from 'antd';
