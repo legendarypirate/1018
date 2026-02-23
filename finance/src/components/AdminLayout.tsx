@@ -251,17 +251,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   /* ------------------------ USER MENU ------------------------ */
-  const userMenu = (
-    <Menu>
-      <Menu.Item key="userinfo" icon={<UserOutlined />} disabled>
-        Таны нэр: {userName}
-      </Menu.Item>
-      <Menu.Divider />
-      <Menu.Item key="logout" icon={<LogoutOutlined />} onClick={showConfirm} danger>
-        Гарах
-      </Menu.Item>
-    </Menu>
-  );
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'userinfo',
+      icon: <UserOutlined />,
+      label: `Таны нэр: ${userName}`,
+      disabled: true,
+    },
+    { type: 'divider' },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: 'Гарах',
+      danger: true,
+      onClick: () => showConfirm(),
+    },
+  ];
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === '/admin/logout') return;
@@ -297,7 +302,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             alignItems: 'center',
           }}
         >
-          <Dropdown overlay={userMenu} trigger={['click']} placement="bottomRight" arrow>
+          <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight" arrow>
             <Avatar
               size="large"
               style={{ cursor: 'pointer', backgroundColor: '#1890ff' }}

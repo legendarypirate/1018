@@ -4,9 +4,19 @@ const path = require("path");
 
 const app = express();
 
-// CORS configuration to allow only a specific origin
+// CORS: allow frontend origin(s). Chrome requires exact origin match.
+var allowedOrigins = [
+  "https://1018.teensclub.mn",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000"
+];
 var corsOptions = {
-  origin: "https://1018.teensclub.mn"
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
+    callback(null, false);
+  },
+  credentials: false
 };
 
 // Enable CORS

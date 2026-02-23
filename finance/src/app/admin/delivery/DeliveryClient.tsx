@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useEffect, Suspense } from 'react';
-import { Table, Button, Space, Input, DatePicker, Drawer, Form ,Select,Tag,Modal,Checkbox,message,InputNumber,List,Row,Col,Tooltip, Image} from 'antd';
+import { Table, Button, Space, Input, DatePicker, Drawer, Form, Select, Tag, Modal, Checkbox, message, InputNumber, List, Row, Col, Tooltip, Image, App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EditOutlined, DeleteOutlined,PlusOutlined, EyeOutlined} from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -97,6 +97,7 @@ interface ProductItem {
 
 
 export default function DeliveryPage() {
+  const { modal } = App.useApp();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -584,44 +585,43 @@ const handleDistrictFilterChange = (value: number | null) => {
       setProductList([]);
     }
   }, [pullFromWarehouse, merchantId]);
-  const handleDelete = async () => {
-    // Шалгах: бүх сонгогдсон item-уудын статус 1 эсэх
+
+  const handleDelete = () => {
     const selectedDeliveries = deliveryData.filter(item => selectedRowKeys.includes(item.id));
     const nonDeletable = selectedDeliveries.filter(item => item.status !== 1);
-  
+
     if (nonDeletable.length > 0) {
       message.warning("Устгах боломжгүй хүргэлт байна.");
       return;
     }
-  
-    Modal.confirm({
+
+    modal.confirm({
       title: `Та ${selectedRowKeys.length} ширхэг хүргэлтийг устгахдаа итгэлтэй байна уу?`,
       okText: "Тийм",
       cancelText: "Үгүй",
+      okButtonProps: { danger: true },
       onOk: async () => {
         try {
           const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/delivery/delete-multiple`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ids: selectedRowKeys }),
           });
-  
+
           if (!response.ok) throw new Error("Амжилтгүй боллоо");
-  
+
           message.success("Амжилттай устгагдлаа");
-  
+
           const refreshed = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/delivery`);
           const refreshedResult = await refreshed.json();
           if (refreshedResult.success) {
             setDeliveryData(refreshedResult.data);
           }
-  
+
           form.resetFields();
           setIsDrawerVisible(false);
           setSelectedRowKeys([]);
-        }  catch (error) {
+        } catch (error) {
           const err = error as Error;
           message.error("Алдаа гарлаа: " + err.message);
         }
@@ -1474,7 +1474,7 @@ const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
       {hasPermission('delivery:excel_import_delivery') && (
 
 
-      <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#fff', padding: '16px 24px', borderTop: '1px solid #ddd', zIndex: 999 }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', background: '#fff', padding: '16px 24px', borderTop: '1px solid #ddd', zIndex: 1050, boxShadow: '0 -2px 8px rgba(0,0,0,0.1)' }}>
         <Space style={{ marginRight: 16 }}>
           <div>
             {selectedRowKeys.length} item(s) selected
@@ -1488,7 +1488,8 @@ const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
           </Button>
           <Button
             type="primary"
-            onClick={handleDelete}
+            danger
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(); }}
             disabled={selectedRowKeys.length === 0}
           >
             Устгах

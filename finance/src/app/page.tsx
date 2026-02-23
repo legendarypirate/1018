@@ -48,36 +48,58 @@ export default function LoginPage() {
         openNotification('error', 'Нэвтрэх нэр болон нууц үгээ оруулна уу!');
         return;
       }
-    
+
       setLoading(true);
-    
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        if (!apiUrl) {
+          openNotification('error', 'API холбоос тохируулаагүй байна.');
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch(`${apiUrl}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
+          signal: controller.signal,
+          credentials: 'omit',
         });
-    
+
+        clearTimeout(timeoutId);
+
         const data = await res.json();
-    
+
         if (res.ok && data.success) {
           openNotification('success', 'Амжилттай нэвтрэлээ!');
-    
-          // Store all relevant info
+
           const { token, user } = data;
           localStorage.setItem('token', token);
           localStorage.setItem('user', JSON.stringify(user));
           localStorage.setItem('permissions', JSON.stringify(user.permissions));
           localStorage.setItem('role', user.role?.toString() ?? '');
           localStorage.setItem('username', user.username);
-    
+
           router.push('/admin');
         } else {
           openNotification('error', data.message || 'Нэвтрэх нэр эсвэл нууц үг буруу байна!');
         }
-      } catch (error) {
-        console.error(error);
-        openNotification('error', 'Сервертэй холбогдож чадсангүй!');
+      } catch (error: unknown) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            openNotification('error', 'Холболт удаан боллоо. Дахин оролдоно уу.');
+          } else {
+            console.error(error);
+            openNotification('error', 'Сервертэй холбогдож чадсангүй!');
+          }
+        } else {
+          openNotification('error', 'Сервертэй холбогдож чадсангүй!');
+        }
       } finally {
         setLoading(false);
       }
@@ -281,9 +303,10 @@ export default function LoginPage() {
   </div>
   <button
     type="submit"
-    className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition text-black"
+    disabled={loading}
+    className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition disabled:opacity-60 disabled:cursor-not-allowed text-black"
   >
-    Нэвтрэх
+    {loading ? 'Уншиж байна...' : 'Нэвтрэх'}
   </button>
 </form>
 
