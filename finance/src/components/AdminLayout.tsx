@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useTransition, useEffect } from 'react';
-import { Layout, Menu, message, Spin, Modal, Dropdown, Avatar, MenuProps } from 'antd';
+import { Layout, Menu, App, Spin, Dropdown, Avatar, MenuProps } from 'antd';
 import {
   DashboardOutlined, UserOutlined, SettingOutlined, TruckOutlined, ShoppingCartOutlined,
   AppstoreAddOutlined, BellOutlined, HomeOutlined, FileTextOutlined, KeyOutlined,
@@ -107,6 +107,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [userName, setUserName] = useState<string>('Хэрэглэгч');
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>([]);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const { modal, message: msg } = App.useApp();
 
   useEffect(() => {
     const permissions = getUserPermissions();
@@ -226,21 +228,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const allowed = hasAccessToPath(pathname, menuItems, userPermissions);
 
     if (pathname.startsWith('/admin') && !allowed) {
-      message.error('Танд энэ хуудас руу хандах эрх байхгүй!');
+      msg.error('Танд энэ хуудас руу хандах эрх байхгүй!');
       router.push('/admin');
     }
   }, [pathname, userPermissions, router]);
 
   /* ------------------------ LOGOUT HANDLER ------------------------ */
   const handleLogout = () => {
-    message.success('Амжилттай гарлаа');
     localStorage.removeItem('user');
     localStorage.removeItem('token');
-    router.push('/');
+    localStorage.removeItem('username');
+    msg.success('Амжилттай гарлаа');
+    window.location.href = '/';
   };
 
-  const showConfirm = () => {
-    Modal.confirm({
+  const showLogoutConfirm = () => {
+    modal.confirm({
       title: 'Та гарахдаа итгэлтэй байна уу?',
       okText: 'Тийм',
       cancelText: 'Үгүй',
@@ -250,23 +253,37 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     });
   };
 
-  /* ------------------------ USER MENU ------------------------ */
-  const userMenuItems: MenuProps['items'] = [
-    {
-      key: 'userinfo',
-      icon: <UserOutlined />,
-      label: `Таны нэр: ${userName}`,
-      disabled: true,
-    },
-    { type: 'divider' },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: 'Гарах',
-      danger: true,
-      onClick: () => showConfirm(),
-    },
-  ];
+  const onLogoutClick = () => {
+    setUserDropdownOpen(false);
+    setTimeout(() => showLogoutConfirm(), 50);
+  };
+
+  const userDropdownContent = (
+    <div style={{ minWidth: 200, padding: '4px 0' }}>
+      <div style={{ padding: '8px 12px', color: 'rgba(0,0,0,0.65)', cursor: 'default' }}>
+        Таны нэр: {userName}
+      </div>
+      <div style={{ borderTop: '1px solid #f0f0f0', margin: '4px 0' }} />
+      <button
+        type="button"
+        onClick={onLogoutClick}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          padding: '8px 12px',
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          color: '#ff4d4f',
+          fontSize: 14,
+        }}
+      >
+        <LogoutOutlined /> Гарах
+      </button>
+    </div>
+  );
 
   const handleMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === '/admin/logout') return;
@@ -302,7 +319,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             alignItems: 'center',
           }}
         >
-          <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight" arrow>
+          <Dropdown
+            open={userDropdownOpen}
+            onOpenChange={setUserDropdownOpen}
+            dropdownRender={() => userDropdownContent}
+            trigger={['click']}
+            placement="bottomRight"
+            arrow
+          >
             <Avatar
               size="large"
               style={{ cursor: 'pointer', backgroundColor: '#1890ff' }}

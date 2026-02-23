@@ -97,7 +97,7 @@ interface ProductItem {
 
 
 export default function DeliveryPage() {
-  const { modal } = App.useApp();
+  const { modal, message: msg } = App.useApp();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -591,42 +591,45 @@ const handleDistrictFilterChange = (value: number | null) => {
     const nonDeletable = selectedDeliveries.filter(item => item.status !== 1);
 
     if (nonDeletable.length > 0) {
-      message.warning("Устгах боломжгүй хүргэлт байна.");
+      msg.warning("Устгах боломжгүй хүргэлт байна.");
       return;
     }
 
-    modal.confirm({
-      title: `Та ${selectedRowKeys.length} ширхэг хүргэлтийг устгахдаа итгэлтэй байна уу?`,
-      okText: "Тийм",
-      cancelText: "Үгүй",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/delivery/delete-multiple`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ids: selectedRowKeys }),
-          });
+    const keysToDelete = [...selectedRowKeys];
+    setTimeout(() => {
+      modal.confirm({
+        title: `Та ${keysToDelete.length} ширхэг хүргэлтийг устгахдаа итгэлтэй байна уу?`,
+        okText: "Тийм",
+        cancelText: "Үгүй",
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/delivery/delete-multiple`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids: keysToDelete }),
+            });
 
-          if (!response.ok) throw new Error("Амжилтгүй боллоо");
+            if (!response.ok) throw new Error("Амжилтгүй боллоо");
 
-          message.success("Амжилттай устгагдлаа");
+            msg.success("Амжилттай устгагдлаа");
 
-          const refreshed = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/delivery`);
-          const refreshedResult = await refreshed.json();
-          if (refreshedResult.success) {
-            setDeliveryData(refreshedResult.data);
+            const refreshed = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/delivery`);
+            const refreshedResult = await refreshed.json();
+            if (refreshedResult.success) {
+              setDeliveryData(refreshedResult.data);
+            }
+
+            form.resetFields();
+            setIsDrawerVisible(false);
+            setSelectedRowKeys([]);
+          } catch (error) {
+            const err = error as Error;
+            msg.error("Алдаа гарлаа: " + err.message);
           }
-
-          form.resetFields();
-          setIsDrawerVisible(false);
-          setSelectedRowKeys([]);
-        } catch (error) {
-          const err = error as Error;
-          message.error("Алдаа гарлаа: " + err.message);
-        }
-      },
-    });
+        },
+      });
+    }, 0);
   };
   
   // Merchant Select onChange
