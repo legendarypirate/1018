@@ -16,8 +16,14 @@ var corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
     callback(null, false);
   },
-  credentials: false
+  credentials: false,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+  optionsSuccessStatus: 200
 };
+
+// Answer preflight (OPTIONS) immediately so Chrome doesn't leave it pending
+app.options("*", cors(corsOptions), (req, res) => res.sendStatus(204));
 
 // Enable CORS
 app.use(cors(corsOptions));
