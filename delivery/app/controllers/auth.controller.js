@@ -131,7 +131,11 @@ exports.mobile_login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials!" });
     }
 
-    const token = jwt.sign({ id: user.id, phone: user.phone, role: user.role }, secretKey, { expiresIn: "30m" });
+    if (user.role_id === 3 && user.is_active === false) {
+      return res.status(403).json({ message: "Your account has been disabled. Please contact admin." });
+    }
+
+    const token = jwt.sign({ id: user.id, phone: user.phone, role: user.role_id }, secretKey, { expiresIn: "30m" });
 
     res.json({
       success: true,

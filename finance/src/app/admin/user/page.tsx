@@ -11,6 +11,8 @@ import {
   Select,
   Modal,
   message,
+  Switch,
+  Tag,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -28,9 +30,12 @@ interface User {
   email: string;
   phone: string;
   role_id: number;
+  is_active: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+const DRIVER_ROLE_ID = 3;
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -97,6 +102,26 @@ export default function UsersPage() {
     form.resetFields();
   };
 
+  const handleToggleActive = async (record: User, checked: boolean) => {
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/user/${record.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: checked }),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message);
+      message.success(checked ? 'Жолооч идэвхжлээ' : 'Жолооч идэвхгүй боллоо');
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      message.error('Төлөв өөрчлөхөд алдаа гарлаа');
+    }
+  };
+
   const handleFormSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -151,6 +176,25 @@ export default function UsersPage() {
       },
     },
     {
+      title: 'Төлөв',
+      key: 'is_active',
+      render: (_, record) => {
+        if (record.role_id !== DRIVER_ROLE_ID) return '—';
+        const active = record.is_active !== false;
+        return (
+          <Space>
+            <Switch
+              checked={active}
+              onChange={(checked) => handleToggleActive(record, checked)}
+            />
+            <Tag color={active ? 'green' : 'default'}>
+              {active ? 'Идэвхтэй' : 'Идэвхгүй'}
+            </Tag>
+          </Space>
+        );
+      },
+    },
+    {
       title: 'Actions',
       key: 'actions',
       render: (_, record) => (
@@ -177,6 +221,11 @@ export default function UsersPage() {
 
   return (
     <div>
+      <style>{`
+        .driver-disabled-row td {
+          opacity: 0.55;
+        }
+      `}</style>
       <h1 style={{ marginBottom: 24 }}>Хэрэглэгч</h1>
       <Space style={{ marginBottom: 16, width: '100%' }} wrap>
         <Button
@@ -190,9 +239,21 @@ export default function UsersPage() {
 
       <Table
         columns={columns}
-        dataSource={users}
+        dataSource={[...users].sort((a, b) => {
+          if (a.role_id === DRIVER_ROLE_ID && b.role_id !== DRIVER_ROLE_ID) return -1;
+          if (a.role_id !== DRIVER_ROLE_ID && b.role_id === DRIVER_ROLE_ID) return 1;
+          const aActive = a.is_active !== false ? 1 : 0;
+          const bActive = b.is_active !== false ? 1 : 0;
+          if (bActive !== aActive) return bActive - aActive;
+          return a.username.localeCompare(b.username);
+        })}
         rowKey="id"
         loading={loading}
+        rowClassName={(record) =>
+          record.role_id === DRIVER_ROLE_ID && record.is_active === false
+            ? 'driver-disabled-row'
+            : ''
+        }
       />
 
       <Drawer

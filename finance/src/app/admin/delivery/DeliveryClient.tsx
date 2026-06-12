@@ -105,7 +105,7 @@ export default function DeliveryPage() {
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
   const [merchants, setMerchants] = useState<{ id: number; username: string }[]>([]);
   const [deliveryData, setDeliveryData] = useState<Delivery[]>([]);
-  const [drivers, setDrivers] = useState<{ id: number; username: string }[]>([]);
+  const [drivers, setDrivers] = useState<{ id: number; username: string; is_active?: boolean }[]>([]);
   const [selectedDriverId, setSelectedDriverId] = useState<number | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [pullFromWarehouse, setPullFromWarehouse] = useState(false);
@@ -1718,8 +1718,13 @@ const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
           value={selectedDriverId}
         >
           {drivers.map((driver) => (
-            <Option key={driver.id} value={driver.id}>
+            <Option
+              key={driver.id}
+              value={driver.id}
+              disabled={driver.is_active === false}
+            >
               {driver.username}
+              {driver.is_active === false ? ' (Идэвхгүй)' : ''}
             </Option>
           ))}
         </Select>

@@ -887,6 +887,7 @@ CREATE TABLE public.users (
     role_id integer,
     phone character varying(255),
     email character varying(255),
+    is_active boolean DEFAULT true NOT NULL,
     "createdAt" timestamp with time zone NOT NULL,
     "updatedAt" timestamp with time zone NOT NULL
 );

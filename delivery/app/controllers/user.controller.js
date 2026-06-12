@@ -3,35 +3,60 @@ const User = db.users;
 const Op = db.Sequelize.Op;
 const bcrypt = require('bcryptjs');
 const saltRounds = 10; // Number of salt rounds for bcrypt
+const DRIVER_ROLE_ID = 3;
+
+const findDuplicateDriver = async (username, excludeId = null) => {
+  const where = {
+    role_id: DRIVER_ROLE_ID,
+    username: { [Op.iLike]: username.trim() },
+  };
+  if (excludeId) {
+    where.id = { [Op.ne]: excludeId };
+  }
+  return User.findOne({ where });
+};
 
 // Create and Save a new User
 exports.create = async (req, res) => {
   // Validate request
   if (!req.body.username || !req.body.role_id || !req.body.password) {
     res.status(400).send({
+      success: false,
       message: "Content can not be empty!"
     });
     return;
   }
 
   try {
+    if (Number(req.body.role_id) === DRIVER_ROLE_ID) {
+      const existingDriver = await findDuplicateDriver(req.body.username);
+      if (existingDriver) {
+        return res.status(400).send({
+          success: false,
+          message: "Driver with this name already exists."
+        });
+      }
+    }
+
     // Hash the password
     const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
 
     // Create a User object
     const user = {
-      username: req.body.username,
+      username: req.body.username.trim(),
       phone: req.body.phone,
       email: req.body.email,
       role_id: req.body.role_id,
-      password: hashedPassword
+      password: hashedPassword,
+      is_active: true,
     };
 
     // Save User in the database
     const data = await User.create(user);
-    res.send(data);
+    res.send({ success: true, data });
   } catch (err) {
     res.status(500).send({
+      success: false,
       message: err.message || "Some error occurred while creating the User."
     });
   }
@@ -52,8 +77,9 @@ exports.findMerchants = (req, res) => {
 exports.findDrivers = async (req, res) => {
   try {
     const drivers = await User.findAll({
-      where: { role_id: 3 }, // adjust if column name is different
-      attributes: ['id', 'username'] // select only needed fields
+      where: { role_id: DRIVER_ROLE_ID },
+      attributes: ['id', 'username', 'is_active'],
+      order: [['is_active', 'DESC'], ['username', 'ASC']],
     });
 
     res.send({
@@ -80,7 +106,14 @@ exports.findAll = async (req, res) => {
   }
 
   try {
-    const data = await User.findAll({ where: condition });
+    const data = await User.findAll({
+      where: condition,
+      order: [
+        ['is_active', 'DESC'],
+        ['role_id', 'DESC'],
+        ['username', 'ASC'],
+      ],
+    });
 
     res.send({
       success: true,
@@ -116,28 +149,58 @@ exports.findOne = (req, res) => {
 };
 
 // Update a User by the id in the request
-exports.update = (req, res) => {
+exports.update = async (req, res) => {
   const id = req.params.id;
 
-  User.update(req.body, {
-    where: { id: id }
-  })
-    .then(num => {
-      if (num == 1) {
-        res.send({
-          message: "User was updated successfully."
-        });
-      } else {
-        res.send({
-          message: `Cannot update User with id=${id}. Maybe User was not found or req.body is empty!`
+  try {
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).send({
+        success: false,
+        message: `Cannot find User with id=${id}.`
+      });
+    }
+
+    const roleId = req.body.role_id != null ? Number(req.body.role_id) : user.role_id;
+    const username = req.body.username != null ? req.body.username.trim() : user.username;
+
+    if (roleId === DRIVER_ROLE_ID && username) {
+      const existingDriver = await findDuplicateDriver(username, id);
+      if (existingDriver) {
+        return res.status(400).send({
+          success: false,
+          message: "Driver with this name already exists."
         });
       }
-    })
-    .catch(err => {
-      res.status(500).send({
-        message: "Error updating User with id=" + id
+    }
+
+    const updateData = { ...req.body };
+    if (updateData.username) {
+      updateData.username = updateData.username.trim();
+    }
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, saltRounds);
+    }
+
+    const [num] = await User.update(updateData, { where: { id } });
+
+    if (num === 1) {
+      res.send({
+        success: true,
+        message: "User was updated successfully."
       });
+    } else {
+      res.send({
+        success: false,
+        message: `Cannot update User with id=${id}. Maybe req.body is empty!`
+      });
+    }
+  } catch (err) {
+    res.status(500).send({
+      success: false,
+      message: "Error updating User with id=" + id
     });
+  }
 };
 
 // Delete a User with the specified id in the request
