@@ -76,19 +76,17 @@ export default function UsersPage() {
       okType: 'danger',
       cancelText: 'Үгүй',
       onOk: async () => {
-        try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/user/${record.id}`,
-            { method: 'DELETE' }
-          );
-          const json = await res.json();
-          if (!json.success) throw new Error(json.message);
-          message.success('Амжилттай устгалаа');
-          fetchData(); // ✅ refresh after delete
-        } catch (err) {
-          console.error(err);
-          message.error('Устгахад алдаа гарлаа');
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/user/${record.id}`,
+          { method: 'DELETE' }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) {
+          message.error(json.message || 'Устгахад алдаа гарлаа');
+          throw new Error(json.message || 'Delete failed');
         }
+        message.success('Амжилттай устгалаа');
+        fetchData();
       },
     });
   };
@@ -112,13 +110,18 @@ export default function UsersPage() {
           body: JSON.stringify({ is_active: checked }),
         }
       );
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.message);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        message.error(json.message || 'Төлөв өөрчлөхөд алдаа гарлаа');
+        fetchData();
+        return;
+      }
       message.success(checked ? 'Жолооч идэвхжлээ' : 'Жолооч идэвхгүй боллоо');
       fetchData();
     } catch (err) {
       console.error(err);
       message.error('Төлөв өөрчлөхөд алдаа гарлаа');
+      fetchData();
     }
   };
 
@@ -221,11 +224,6 @@ export default function UsersPage() {
 
   return (
     <div>
-      <style>{`
-        .driver-disabled-row td {
-          opacity: 0.55;
-        }
-      `}</style>
       <h1 style={{ marginBottom: 24 }}>Хэрэглэгч</h1>
       <Space style={{ marginBottom: 16, width: '100%' }} wrap>
         <Button
@@ -239,21 +237,17 @@ export default function UsersPage() {
 
       <Table
         columns={columns}
-        dataSource={[...users].sort((a, b) => {
-          if (a.role_id === DRIVER_ROLE_ID && b.role_id !== DRIVER_ROLE_ID) return -1;
-          if (a.role_id !== DRIVER_ROLE_ID && b.role_id === DRIVER_ROLE_ID) return 1;
-          const aActive = a.is_active !== false ? 1 : 0;
-          const bActive = b.is_active !== false ? 1 : 0;
-          if (bActive !== aActive) return bActive - aActive;
-          return a.username.localeCompare(b.username);
-        })}
+        dataSource={[...users]
+          .filter(
+            (u) => u.role_id !== DRIVER_ROLE_ID || u.is_active !== false
+          )
+          .sort((a, b) => {
+            if (a.role_id === DRIVER_ROLE_ID && b.role_id !== DRIVER_ROLE_ID) return -1;
+            if (a.role_id !== DRIVER_ROLE_ID && b.role_id === DRIVER_ROLE_ID) return 1;
+            return a.username.localeCompare(b.username);
+          })}
         rowKey="id"
         loading={loading}
-        rowClassName={(record) =>
-          record.role_id === DRIVER_ROLE_ID && record.is_active === false
-            ? 'driver-disabled-row'
-            : ''
-        }
       />
 
       <Drawer

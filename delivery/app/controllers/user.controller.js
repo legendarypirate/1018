@@ -5,13 +5,27 @@ const bcrypt = require('bcryptjs');
 const saltRounds = 10; // Number of salt rounds for bcrypt
 const DRIVER_ROLE_ID = 3;
 
+const activeDriverWhere = {
+  role_id: DRIVER_ROLE_ID,
+  is_active: { [Op.ne]: false },
+};
+
 const findDuplicateDriver = async (username, excludeId = null) => {
+  const normalized = username.trim().toLowerCase();
   const where = {
-    role_id: DRIVER_ROLE_ID,
-    username: { [Op.iLike]: username.trim() },
+    ...activeDriverWhere,
+    [Op.and]: [
+      db.sequelize.where(
+        db.sequelize.fn(
+          'LOWER',
+          db.sequelize.fn('TRIM', db.sequelize.col('username'))
+        ),
+        normalized
+      ),
+    ],
   };
-  if (excludeId) {
-    where.id = { [Op.ne]: excludeId };
+  if (excludeId != null) {
+    where.id = { [Op.ne]: Number(excludeId) };
   }
   return User.findOne({ where });
 };
@@ -77,9 +91,9 @@ exports.findMerchants = (req, res) => {
 exports.findDrivers = async (req, res) => {
   try {
     const drivers = await User.findAll({
-      where: { role_id: DRIVER_ROLE_ID },
-      attributes: ['id', 'username', 'is_active'],
-      order: [['is_active', 'DESC'], ['username', 'ASC']],
+      where: activeDriverWhere,
+      attributes: ['id', 'username'],
+      order: [['username', 'ASC']],
     });
 
     res.send({
@@ -150,7 +164,7 @@ exports.findOne = (req, res) => {
 
 // Update a User by the id in the request
 exports.update = async (req, res) => {
-  const id = req.params.id;
+  const id = Number(req.params.id);
 
   try {
     const user = await User.findByPk(id);
@@ -161,72 +175,93 @@ exports.update = async (req, res) => {
       });
     }
 
-    const roleId = req.body.role_id != null ? Number(req.body.role_id) : user.role_id;
-    const username = req.body.username != null ? req.body.username.trim() : user.username;
-
-    if (roleId === DRIVER_ROLE_ID && username) {
-      const existingDriver = await findDuplicateDriver(username, id);
-      if (existingDriver) {
-        return res.status(400).send({
-          success: false,
-          message: "Driver with this name already exists."
-        });
-      }
-    }
-
     const updateData = { ...req.body };
-    if (updateData.username) {
-      updateData.username = updateData.username.trim();
+
+    if (updateData.username != null) {
+      const trimmedUsername = updateData.username.trim();
+      const roleId = updateData.role_id != null ? Number(updateData.role_id) : user.role_id;
+
+      if (roleId === DRIVER_ROLE_ID) {
+        const existingDriver = await findDuplicateDriver(trimmedUsername, id);
+        if (existingDriver) {
+          return res.status(400).send({
+            success: false,
+            message: "Driver with this name already exists."
+          });
+        }
+      }
+      updateData.username = trimmedUsername;
     }
+
     if (updateData.password) {
       updateData.password = await bcrypt.hash(updateData.password, saltRounds);
     }
 
-    const [num] = await User.update(updateData, { where: { id } });
+    await user.update(updateData);
 
-    if (num === 1) {
-      res.send({
-        success: true,
-        message: "User was updated successfully."
-      });
-    } else {
-      res.send({
-        success: false,
-        message: `Cannot update User with id=${id}. Maybe req.body is empty!`
-      });
-    }
+    res.send({
+      success: true,
+      message: "User was updated successfully."
+    });
   } catch (err) {
     res.status(500).send({
       success: false,
-      message: "Error updating User with id=" + id
+      message: err.message || "Error updating User with id=" + id
     });
   }
 };
 
 // Delete a User with the specified id in the request
-exports.delete = (req, res) => {
-  const id = req.params.id;
+exports.delete = async (req, res) => {
+  const id = Number(req.params.id);
+  const t = await db.sequelize.transaction();
 
-  User.destroy({ where: { id: id } })
-    .then(num => {
-      if (num === 1) {
-        res.json({
-          success: true,
-          message: "User was deleted successfully!"
-        });
-      } else {
-        res.status(404).json({
-          success: false,
-          message: `Cannot delete User with id=${id}. Maybe User was not found!`
-        });
-      }
-    })
-    .catch(err => {
-      res.status(500).json({
+  try {
+    const user = await User.findByPk(id, { transaction: t });
+    if (!user) {
+      await t.rollback();
+      return res.status(404).json({
         success: false,
-        message: "Could not delete User with id=" + id
+        message: `Cannot delete User with id=${id}. Maybe User was not found!`
       });
+    }
+
+    if (user.role_id === 1) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete admin user."
+      });
+    }
+
+    if (user.role_id === DRIVER_ROLE_ID) {
+      await db.histories.destroy({ where: { driver_id: id }, transaction: t });
+      await db.deliveries.update({ driver_id: null }, { where: { driver_id: id }, transaction: t });
+      await db.orders.update({ driver_id: null }, { where: { driver_id: id }, transaction: t });
+      await db.summaries.update({ driver_id: null }, { where: { driver_id: id }, transaction: t });
+    }
+
+    const num = await User.destroy({ where: { id }, transaction: t });
+    await t.commit();
+
+    if (num === 1) {
+      res.json({
+        success: true,
+        message: "User was deleted successfully!"
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: `Cannot delete User with id=${id}. Maybe User was not found!`
+      });
+    }
+  } catch (err) {
+    await t.rollback();
+    res.status(500).json({
+      success: false,
+      message: err.message || `Could not delete User with id=${id}`
     });
+  }
 };
 
 
