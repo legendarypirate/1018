@@ -39,9 +39,12 @@ app.use("/assets", express.static(path.join(__dirname, "app", "assets")));
 
 // Import models (Make sure to update the path if necessary)y
 const db = require("./app/models");
+const { ensureUserSchema } = require("./app/utils/ensureUserSchema");
 
 // Sync database and handle any errors
-db.sequelize.sync()
+db.sequelize
+  .sync()
+  .then(() => ensureUserSchema(db.sequelize))
   .then(() => {
     console.log("Synced db.");
   })

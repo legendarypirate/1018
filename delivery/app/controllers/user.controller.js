@@ -211,6 +211,46 @@ exports.update = async (req, res) => {
   }
 };
 
+exports.toggleActive = async (req, res) => {
+  const id = Number(req.params.id);
+
+  if (req.body.is_active === undefined) {
+    return res.status(400).send({
+      success: false,
+      message: "is_active is required."
+    });
+  }
+
+  try {
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).send({
+        success: false,
+        message: `Cannot find User with id=${id}.`
+      });
+    }
+
+    if (Number(user.role_id) !== DRIVER_ROLE_ID) {
+      return res.status(400).send({
+        success: false,
+        message: "Only drivers can be enabled or disabled."
+      });
+    }
+
+    await user.update({ is_active: Boolean(req.body.is_active) });
+
+    res.send({
+      success: true,
+      message: "Driver status updated successfully."
+    });
+  } catch (err) {
+    res.status(500).send({
+      success: false,
+      message: err.message || "Error updating driver status."
+    });
+  }
+};
+
 // Delete a User with the specified id in the request
 exports.delete = async (req, res) => {
   const id = Number(req.params.id);
@@ -234,11 +274,23 @@ exports.delete = async (req, res) => {
       });
     }
 
-    if (user.role_id === DRIVER_ROLE_ID) {
-      await db.histories.destroy({ where: { driver_id: id }, transaction: t });
+    if (Number(user.role_id) === DRIVER_ROLE_ID) {
+      try {
+        await db.histories.destroy({ where: { driver_id: id }, transaction: t });
+      } catch (cleanupErr) {
+        console.warn("histories cleanup skipped:", cleanupErr.message);
+      }
       await db.deliveries.update({ driver_id: null }, { where: { driver_id: id }, transaction: t });
       await db.orders.update({ driver_id: null }, { where: { driver_id: id }, transaction: t });
       await db.summaries.update({ driver_id: null }, { where: { driver_id: id }, transaction: t });
+    }
+
+    if (Number(user.role_id) === 2) {
+      await db.goods.destroy({ where: { merchant_id: id }, transaction: t });
+      await db.requests.destroy({ where: { merchant_id: id }, transaction: t });
+      if (db.words) {
+        await db.words.destroy({ where: { merchant_id: id }, transaction: t });
+      }
     }
 
     const num = await User.destroy({ where: { id }, transaction: t });

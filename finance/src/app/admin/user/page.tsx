@@ -9,10 +9,7 @@ import {
   Form,
   Input,
   Select,
-  Modal,
-  message,
-  Switch,
-  Tag,
+  App,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -22,7 +19,7 @@ import {
 } from '@ant-design/icons';
 
 const { Option } = Select;
-const { confirm } = Modal;
+const DRIVER_ROLE_ID = 3;
 
 interface User {
   id: number;
@@ -35,40 +32,46 @@ interface User {
   updatedAt: string;
 }
 
-const DRIVER_ROLE_ID = 3;
-
 export default function UsersPage() {
+  const { modal, message } = App.useApp();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [form] = Form.useForm();
 
-  // ✅ Reusable fetch function
+  const apiBase = process.env.NEXT_PUBLIC_API_URL;
+
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user`);
+      const res = await fetch(`${apiBase}/api/user`);
       const result = await res.json();
       if (result.success) {
-        setUsers(result.data);
+        setUsers(
+          result.data.map((u: User) => ({
+            ...u,
+            role_id: Number(u.role_id),
+            is_active: u.is_active !== false,
+          }))
+        );
       } else {
-        console.error('Failed to load users:', result.message);
+        message.error(result.message || 'Хэрэглэгч ачаалахад алдаа гарлаа');
       }
     } catch (err) {
       console.error('Fetch error:', err);
+      message.error('Хэрэглэгч ачаалахад алдаа гарлаа');
     } finally {
       setLoading(false);
     }
   };
 
-  // Load users on page load
   useEffect(() => {
     document.title = 'Хэрэглэгч';
     fetchData();
   }, []);
 
   const handleDelete = (record: User) => {
-    confirm({
+    modal.confirm({
       title: 'Устгахдаа итгэлтэй байна уу?',
       icon: <ExclamationCircleOutlined />,
       content: `"${record.username}" устгах`,
@@ -76,17 +79,16 @@ export default function UsersPage() {
       okType: 'danger',
       cancelText: 'Үгүй',
       onOk: async () => {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/user/${record.id}`,
-          { method: 'DELETE' }
-        );
+        const res = await fetch(`${apiBase}/api/user/${record.id}`, {
+          method: 'DELETE',
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.success) {
           message.error(json.message || 'Устгахад алдаа гарлаа');
           throw new Error(json.message || 'Delete failed');
         }
         message.success('Амжилттай устгалаа');
-        fetchData();
+        await fetchData();
       },
     });
   };
@@ -101,27 +103,30 @@ export default function UsersPage() {
   };
 
   const handleToggleActive = async (record: User, checked: boolean) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === record.id ? { ...u, is_active: checked } : u
+      )
+    );
+
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/user/${record.id}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_active: checked }),
-        }
-      );
+      const res = await fetch(`${apiBase}/api/user/${record.id}/active`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: checked }),
+      });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
         message.error(json.message || 'Төлөв өөрчлөхөд алдаа гарлаа');
-        fetchData();
+        await fetchData();
         return;
       }
       message.success(checked ? 'Жолооч идэвхжлээ' : 'Жолооч идэвхгүй боллоо');
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error(err);
       message.error('Төлөв өөрчлөхөд алдаа гарлаа');
-      fetchData();
+      await fetchData();
     }
   };
 
@@ -129,22 +134,24 @@ export default function UsersPage() {
     try {
       const values = await form.validateFields();
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user`, {
+      const response = await fetch(`${apiBase}/api/user`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          ...values,
+          role_id: Number(values.role_id),
+        }),
       });
 
       const result = await response.json();
 
       if (response.ok && result.success) {
         message.success('Хэрэглэгч амжилттай үүслээ');
-        fetchData(); // ✅ refresh after create
+        await fetchData();
         handleDrawerClose();
       } else {
-        console.error('Failed to create user:', result.message);
         message.error(result.message || 'Алдаа гарлаа');
       }
     } catch (error) {
@@ -152,6 +159,14 @@ export default function UsersPage() {
       message.error('Хэлбэр буруу байна');
     }
   };
+
+  const visibleUsers = [...users]
+    .filter((u) => Number(u.role_id) !== DRIVER_ROLE_ID || u.is_active !== false)
+    .sort((a, b) => {
+      if (Number(a.role_id) === DRIVER_ROLE_ID && Number(b.role_id) !== DRIVER_ROLE_ID) return -1;
+      if (Number(a.role_id) !== DRIVER_ROLE_ID && Number(b.role_id) === DRIVER_ROLE_ID) return 1;
+      return a.username.localeCompare(b.username);
+    });
 
   const columns: ColumnsType<User> = [
     {
@@ -175,24 +190,24 @@ export default function UsersPage() {
           2: 'customer',
           3: 'driver',
         };
-        return roles[role_id] || `Role ${role_id}`;
+        return roles[Number(role_id)] || `Role ${role_id}`;
       },
     },
     {
       title: 'Төлөв',
       key: 'is_active',
       render: (_, record) => {
-        if (record.role_id !== DRIVER_ROLE_ID) return '—';
-        const active = record.is_active !== false;
+        if (Number(record.role_id) !== DRIVER_ROLE_ID) return '—';
         return (
-          <Space>
-            <Switch
-              checked={active}
-              onChange={(checked) => handleToggleActive(record, checked)}
-            />
-            <Tag color={active ? 'green' : 'default'}>
-              {active ? 'Идэвхтэй' : 'Идэвхгүй'}
-            </Tag>
+          <Space onClick={(e) => e.stopPropagation()}>
+            <Button
+              size="small"
+              danger={record.is_active}
+              type={record.is_active ? 'default' : 'primary'}
+              onClick={() => handleToggleActive(record, !record.is_active)}
+            >
+              {record.is_active ? 'Идэвхгүй болгох' : 'Идэвхжүүлэх'}
+            </Button>
           </Space>
         );
       },
@@ -237,15 +252,7 @@ export default function UsersPage() {
 
       <Table
         columns={columns}
-        dataSource={[...users]
-          .filter(
-            (u) => u.role_id !== DRIVER_ROLE_ID || u.is_active !== false
-          )
-          .sort((a, b) => {
-            if (a.role_id === DRIVER_ROLE_ID && b.role_id !== DRIVER_ROLE_ID) return -1;
-            if (a.role_id !== DRIVER_ROLE_ID && b.role_id === DRIVER_ROLE_ID) return 1;
-            return a.username.localeCompare(b.username);
-          })}
+        dataSource={visibleUsers}
         rowKey="id"
         loading={loading}
       />
@@ -269,7 +276,6 @@ export default function UsersPage() {
           </Form.Item>
           <Form.Item name="role_id" label="Role" rules={[{ required: true }]}>
             <Select placeholder="Select role">
-              <Option value={1}>Admin</Option>
               <Option value={2}>Customer</Option>
               <Option value={3}>Driver</Option>
             </Select>
