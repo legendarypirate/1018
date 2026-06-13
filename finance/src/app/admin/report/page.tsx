@@ -10,7 +10,7 @@ import {
   Drawer,
   Typography,
   Space,
-  Radio,
+  Checkbox,
   Tag,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -55,15 +55,13 @@ type OptionType = {
   username: string;
 };
 
-type ReportType = 'delivered' | 'cancelled' | 'returned';
+const REPORT_OPTIONS: { label: string; statusId: number }[] = [
+  { label: 'Хүргэгдсэн', statusId: 3 },
+  { label: 'Цуцалсан', statusId: 4 },
+  { label: 'Буцаасан', statusId: 5 },
+];
 
 const SALARY_PER_DELIVERY = 7000;
-
-const REPORT_OPTIONS: { key: ReportType; label: string; statusIds: string }[] = [
-  { key: 'delivered', label: 'Хүргэгдсэн', statusIds: '3' },
-  { key: 'cancelled', label: 'Цуцалсан', statusIds: '4' },
-  { key: 'returned', label: 'Буцаасан', statusIds: '5' },
-];
 
 const STATUS_FALLBACK: Record<number, { label: string; color: string }> = {
   3: { label: 'Хүргэгдсэн', color: 'green' },
@@ -203,7 +201,7 @@ const buildDetailColumns = (): ColumnsType<Delivery> => {
 
 export default function DeliveryPage() {
   const [loading, setLoading] = useState(false);
-  const [reportType, setReportType] = useState<ReportType>('delivered');
+  const [selectedStatusIds, setSelectedStatusIds] = useState<number[]>([3]);
   const [reportData, setReportData] = useState<ReportRow[]>([]);
   const [driverDeliveriesMap, setDriverDeliveriesMap] = useState<Record<string, Delivery[]>>({});
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -216,8 +214,7 @@ export default function DeliveryPage() {
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
   const [selectedReportRow, setSelectedReportRow] = useState<ReportRow | null>(null);
 
-  const activeReport = REPORT_OPTIONS.find((opt) => opt.key === reportType)!;
-  const showSalary = reportType === 'delivered';
+  const showSalary = selectedStatusIds.includes(3);
 
   const openNotification = (type: 'success' | 'error', messageText: string) => {
     notification.open({
@@ -264,6 +261,11 @@ export default function DeliveryPage() {
       return;
     }
 
+    if (selectedStatusIds.length === 0) {
+      openNotification('error', 'Хамгийн багадаа нэг төлөв сонгоно уу');
+      return;
+    }
+
     setLoading(true);
     setFetchError(null);
     setDetailDrawerOpen(false);
@@ -276,7 +278,7 @@ export default function DeliveryPage() {
       let deliveryUrl =
         `${process.env.NEXT_PUBLIC_API_URL}/api/delivery/findAllWithDate` +
         `?page=1&limit=10000&startDate=${startDate}&endDate=${endDate}` +
-        `&statusIds=${activeReport.statusIds}`;
+        `&statusIds=${selectedStatusIds.join(',')}`;
 
       if (selectedDriverId) {
         deliveryUrl += `&driverId=${selectedDriverId}`;
@@ -291,12 +293,9 @@ export default function DeliveryPage() {
         throw new Error('Invalid delivery data format');
       }
 
-      const filteredDeliveries = deliveryData.data.filter((d: Delivery) => {
-        const statusId = Number(d.status);
-        if (reportType === 'delivered') return statusId === 3;
-        if (reportType === 'cancelled') return statusId === 4;
-        return statusId === 5;
-      });
+      const filteredDeliveries = deliveryData.data.filter((d: Delivery) =>
+        selectedStatusIds.includes(Number(d.status))
+      );
 
       const groupedByDriver: Record<string, Delivery[]> = {};
       filteredDeliveries.forEach((delivery: Delivery) => {
@@ -314,11 +313,12 @@ export default function DeliveryPage() {
             (sum, d) => sum + parseFloat(d.price.toString()),
             0
           );
-          const salary = showSalary ? totalDeliveries * SALARY_PER_DELIVERY : 0;
+          const deliveredCount = deliveries.filter((d) => Number(d.status) === 3).length;
+          const salary = showSalary ? deliveredCount * SALARY_PER_DELIVERY : 0;
           const difference = showSalary ? totalPrice - salary : 0;
 
           return {
-            key: `${reportType}-${driverName}`,
+            key: `${selectedStatusIds.join('-')}-${driverName}`,
             dateRange: `${startDate} ~ ${endDate}`,
             driverName,
             totalDeliveries,
@@ -342,8 +342,9 @@ export default function DeliveryPage() {
     }
   };
 
-  const handleReportTypeChange = (value: ReportType) => {
-    setReportType(value);
+  const handleStatusChange = (checkedValues: number[]) => {
+    if (checkedValues.length === 0) return;
+    setSelectedStatusIds(checkedValues);
     setReportData([]);
     setDriverDeliveriesMap({});
     setDetailDrawerOpen(false);
@@ -414,11 +415,11 @@ export default function DeliveryPage() {
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(excelData);
-      XLSX.utils.book_append_sheet(wb, ws, activeReport.label);
+      XLSX.utils.book_append_sheet(wb, ws, 'Report');
 
       const startDate = dateRange[0]?.format('YYYY-MM-DD') || '';
       const endDate = dateRange[1]?.format('YYYY-MM-DD') || '';
-      const filename = `Report_${activeReport.label}_${startDate}_${endDate}.xlsx`;
+      const filename = `Report_${startDate}_${endDate}.xlsx`;
 
       XLSX.writeFile(wb, filename);
       openNotification('success', 'Excel файл амжилттай экспортлогдлоо');
@@ -510,14 +511,12 @@ export default function DeliveryPage() {
         className="report-no-print"
         style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}
       >
-        <Radio.Group
-          value={reportType}
-          onChange={(e) => handleReportTypeChange(e.target.value)}
-          optionType="button"
-          buttonStyle="solid"
+        <Checkbox.Group
+          value={selectedStatusIds}
+          onChange={handleStatusChange}
           options={REPORT_OPTIONS.map((opt) => ({
             label: opt.label,
-            value: opt.key,
+            value: opt.statusId,
           }))}
         />
 
@@ -567,7 +566,7 @@ export default function DeliveryPage() {
           loading={loading}
           rowKey="key"
           pagination={false}
-          locale={{ emptyText: `${activeReport.label} тайлан байхгүй байна` }}
+          locale={{ emptyText: 'Тайлан байхгүй байна' }}
           onRow={(record) => ({
             onClick: () => handleRowClick(record),
             style: { cursor: 'pointer' },
@@ -603,7 +602,7 @@ export default function DeliveryPage() {
         className="report-detail-drawer"
         title={
           selectedReportRow
-            ? `${selectedReportRow.driverName} — ${activeReport.label} (${selectedReportRow.totalDeliveries})`
+            ? `${selectedReportRow.driverName} — дэлгэрэнгүй (${selectedReportRow.totalDeliveries})`
             : 'Дэлгэрэнгүй хүргэлт'
         }
         open={detailDrawerOpen}
@@ -619,7 +618,17 @@ export default function DeliveryPage() {
           <div className="report-detail-print-area">
             <div style={{ marginBottom: 16 }}>
               <Space direction="vertical" size={4}>
-                <Text><strong>Төлөв:</strong> {activeReport.label}</Text>
+                <Space wrap>
+                  <Text><strong>Төлөв:</strong></Text>
+                  {selectedStatusIds.map((id) => (
+                    <Tag
+                      key={id}
+                      color={STATUS_FALLBACK[id]?.color || 'default'}
+                    >
+                      {STATUS_FALLBACK[id]?.label || id}
+                    </Tag>
+                  ))}
+                </Space>
                 <Text><strong>Жолооч:</strong> {selectedReportRow.driverName}</Text>
                 <Text><strong>Хугацаа:</strong> {selectedReportRow.dateRange}</Text>
                 <Text>
@@ -635,15 +644,6 @@ export default function DeliveryPage() {
                     </>
                   )}
                 </Text>
-                <StatusBadge
-                  record={{
-                    status: activeReport.statusIds,
-                    status_name: {
-                      status: activeReport.label,
-                      color: STATUS_FALLBACK[Number(activeReport.statusIds)]?.color || 'default',
-                    },
-                  } as Delivery}
-                />
                 <Text type="secondary">Хэвлэсэн: {dayjs().format('YYYY-MM-DD HH:mm')}</Text>
               </Space>
             </div>

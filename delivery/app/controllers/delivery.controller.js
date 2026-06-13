@@ -675,20 +675,36 @@ exports.findAllWithDate = async (req, res) => {
       ? statusIds.split(',').map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id))
       : [3, 7];
 
-    where.status = { [Op.in]: parsedStatusIds };
+    const deliveredStatuses = [3, 7];
 
     // Date range (inclusive, Ulaanbaatar time)
     if (startDate && endDate) {
       const start = new Date(`${startDate}T00:00:00+08:00`);
       const end = new Date(`${endDate}T23:59:59+08:00`);
 
-      const deliveredStatuses = [3, 7];
-      const useUpdatedAt = parsedStatusIds.every((id) => !deliveredStatuses.includes(id));
+      const deliveredIds = parsedStatusIds.filter((id) => deliveredStatuses.includes(id));
+      const updatedIds = parsedStatusIds.filter((id) => !deliveredStatuses.includes(id));
 
-      where[useUpdatedAt ? 'updatedAt' : 'delivered_at'] = {
-        [Op.gte]: start,
-        [Op.lte]: end,
-      };
+      if (deliveredIds.length > 0 && updatedIds.length > 0) {
+        where[Op.or] = [
+          {
+            status: { [Op.in]: deliveredIds },
+            delivered_at: { [Op.gte]: start, [Op.lte]: end },
+          },
+          {
+            status: { [Op.in]: updatedIds },
+            updatedAt: { [Op.gte]: start, [Op.lte]: end },
+          },
+        ];
+      } else if (deliveredIds.length > 0) {
+        where.status = { [Op.in]: deliveredIds };
+        where.delivered_at = { [Op.gte]: start, [Op.lte]: end };
+      } else {
+        where.status = { [Op.in]: updatedIds };
+        where.updatedAt = { [Op.gte]: start, [Op.lte]: end };
+      }
+    } else {
+      where.status = { [Op.in]: parsedStatusIds };
     }
 
     if (driverId) {
