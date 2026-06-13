@@ -7,10 +7,10 @@ import {
   Select,
   DatePicker,
   notification,
-  Modal,
+  Drawer,
   Typography,
   Space,
-  Tabs,
+  Radio,
   Tag,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -59,7 +59,7 @@ type ReportType = 'delivered' | 'cancelled' | 'returned';
 
 const SALARY_PER_DELIVERY = 7000;
 
-const REPORT_TABS: { key: ReportType; label: string; statusIds: string }[] = [
+const REPORT_OPTIONS: { key: ReportType; label: string; statusIds: string }[] = [
   { key: 'delivered', label: 'Хүргэгдсэн', statusIds: '3' },
   { key: 'cancelled', label: 'Цуцалсан', statusIds: '4' },
   { key: 'returned', label: 'Буцаасан', statusIds: '5' },
@@ -134,10 +134,7 @@ const buildSummaryColumns = (showSalary: boolean): ColumnsType<ReportRow> => {
   return columns;
 };
 
-const buildDetailColumns = (reportType: ReportType): ColumnsType<Delivery> => {
-  const dateTitle =
-    reportType === 'delivered' ? 'Хүргэсэн огноо' : 'Огноо';
-
+const buildDetailColumns = (): ColumnsType<Delivery> => {
   return [
     {
       title: '№',
@@ -183,12 +180,12 @@ const buildDetailColumns = (reportType: ReportType): ColumnsType<Delivery> => {
       render: (_: unknown, record: Delivery) => <StatusBadge record={record} />,
     },
     {
-      title: dateTitle,
+      title: 'Огноо',
       key: 'date',
       width: 150,
       render: (_: unknown, record: Delivery) => {
         const value =
-          reportType === 'delivered'
+          Number(record.status) === 3
             ? record.delivered_at
             : record.updatedAt;
         return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
@@ -216,10 +213,10 @@ export default function DeliveryPage() {
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
 
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
   const [selectedReportRow, setSelectedReportRow] = useState<ReportRow | null>(null);
 
-  const activeTab = REPORT_TABS.find((tab) => tab.key === reportType)!;
+  const activeReport = REPORT_OPTIONS.find((opt) => opt.key === reportType)!;
   const showSalary = reportType === 'delivered';
 
   const openNotification = (type: 'success' | 'error', messageText: string) => {
@@ -269,7 +266,7 @@ export default function DeliveryPage() {
 
     setLoading(true);
     setFetchError(null);
-    setDetailModalOpen(false);
+    setDetailDrawerOpen(false);
     setSelectedReportRow(null);
 
     try {
@@ -279,7 +276,7 @@ export default function DeliveryPage() {
       let deliveryUrl =
         `${process.env.NEXT_PUBLIC_API_URL}/api/delivery/findAllWithDate` +
         `?page=1&limit=10000&startDate=${startDate}&endDate=${endDate}` +
-        `&statusIds=${activeTab.statusIds}`;
+        `&statusIds=${activeReport.statusIds}`;
 
       if (selectedDriverId) {
         deliveryUrl += `&driverId=${selectedDriverId}`;
@@ -345,17 +342,17 @@ export default function DeliveryPage() {
     }
   };
 
-  const handleTabChange = (key: string) => {
-    setReportType(key as ReportType);
+  const handleReportTypeChange = (value: ReportType) => {
+    setReportType(value);
     setReportData([]);
     setDriverDeliveriesMap({});
-    setDetailModalOpen(false);
+    setDetailDrawerOpen(false);
     setSelectedReportRow(null);
   };
 
   const handleRowClick = (record: ReportRow) => {
     setSelectedReportRow(record);
-    setDetailModalOpen(true);
+    setDetailDrawerOpen(true);
   };
 
   const handlePrintDetail = () => {
@@ -372,10 +369,7 @@ export default function DeliveryPage() {
     [showSalary]
   );
 
-  const detailColumns = useMemo(
-    () => buildDetailColumns(reportType),
-    [reportType]
-  );
+  const detailColumns = useMemo(() => buildDetailColumns(), []);
 
   const exportToExcel = () => {
     if (reportData.length === 0) {
@@ -420,11 +414,11 @@ export default function DeliveryPage() {
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(excelData);
-      XLSX.utils.book_append_sheet(wb, ws, activeTab.label);
+      XLSX.utils.book_append_sheet(wb, ws, activeReport.label);
 
       const startDate = dateRange[0]?.format('YYYY-MM-DD') || '';
       const endDate = dateRange[1]?.format('YYYY-MM-DD') || '';
-      const filename = `Report_${activeTab.label}_${startDate}_${endDate}.xlsx`;
+      const filename = `Report_${activeReport.label}_${startDate}_${endDate}.xlsx`;
 
       XLSX.writeFile(wb, filename);
       openNotification('success', 'Excel файл амжилттай экспортлогдлоо');
@@ -466,30 +460,22 @@ export default function DeliveryPage() {
             padding: 0 !important;
             background: #fff !important;
           }
-          .report-detail-modal .ant-modal-mask {
+          .report-detail-drawer .ant-drawer-mask {
             display: none !important;
           }
-          .report-detail-modal {
+          .report-detail-drawer {
             position: static !important;
-            overflow: visible !important;
           }
-          .report-detail-modal .ant-modal-wrap {
+          .report-detail-drawer .ant-drawer-content-wrapper {
             position: static !important;
-            overflow: visible !important;
-          }
-          .report-detail-modal .ant-modal {
-            position: static !important;
-            top: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            max-width: 100% !important;
             width: 100% !important;
-          }
-          .report-detail-modal .ant-modal-content {
             box-shadow: none !important;
           }
-          .report-detail-modal .ant-modal-close,
-          .report-detail-modal .report-modal-actions {
+          .report-detail-drawer .ant-drawer-content {
+            box-shadow: none !important;
+          }
+          .report-detail-drawer .ant-drawer-header,
+          .report-detail-drawer .report-drawer-actions {
             display: none !important;
           }
           .report-detail-print-area .ant-table-wrapper,
@@ -520,18 +506,21 @@ export default function DeliveryPage() {
         Тайлан
       </h1>
 
-      <Tabs
-        className="report-no-print"
-        activeKey={reportType}
-        onChange={handleTabChange}
-        items={REPORT_TABS.map((tab) => ({ key: tab.key, label: tab.label }))}
-        style={{ marginBottom: 16 }}
-      />
-
       <div
         className="report-no-print"
         style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}
       >
+        <Radio.Group
+          value={reportType}
+          onChange={(e) => handleReportTypeChange(e.target.value)}
+          optionType="button"
+          buttonStyle="solid"
+          options={REPORT_OPTIONS.map((opt) => ({
+            label: opt.label,
+            value: opt.key,
+          }))}
+        />
+
         <RangePicker
           value={dateRange}
           onChange={(dates) => setDateRange(dates ?? [null, null])}
@@ -566,7 +555,7 @@ export default function DeliveryPage() {
 
       {reportData.length > 0 && (
         <Text type="secondary" className="report-no-print" style={{ display: 'block', marginBottom: 12 }}>
-          Жолоочийн мөр дээр дарж {activeTab.label.toLowerCase()} хүргэлтийн дэлгэрэнгүй жагсаалт харах, хэвлэх
+          Жолоочийн мөр дээр дарж дэлгэрэнгүй жагсаалт харах, хэвлэх
         </Text>
       )}
 
@@ -578,7 +567,7 @@ export default function DeliveryPage() {
           loading={loading}
           rowKey="key"
           pagination={false}
-          locale={{ emptyText: `${activeTab.label} тайлан байхгүй байна` }}
+          locale={{ emptyText: `${activeReport.label} тайлан байхгүй байна` }}
           onRow={(record) => ({
             onClick: () => handleRowClick(record),
             style: { cursor: 'pointer' },
@@ -610,27 +599,27 @@ export default function DeliveryPage() {
         />
       </div>
 
-      <Modal
-        className="report-detail-modal"
+      <Drawer
+        className="report-detail-drawer"
         title={
           selectedReportRow
-            ? `${selectedReportRow.driverName} — ${activeTab.label} (${selectedReportRow.totalDeliveries})`
+            ? `${selectedReportRow.driverName} — ${activeReport.label} (${selectedReportRow.totalDeliveries})`
             : 'Дэлгэрэнгүй хүргэлт'
         }
-        open={detailModalOpen}
-        onCancel={() => {
-          setDetailModalOpen(false);
+        open={detailDrawerOpen}
+        onClose={() => {
+          setDetailDrawerOpen(false);
           setSelectedReportRow(null);
         }}
-        width={1200}
-        footer={null}
+        width="88%"
         destroyOnClose
+        styles={{ body: { paddingBottom: 24 } }}
       >
         {selectedReportRow && (
           <div className="report-detail-print-area">
             <div style={{ marginBottom: 16 }}>
               <Space direction="vertical" size={4}>
-                <Text><strong>Тайлан:</strong> {activeTab.label}</Text>
+                <Text><strong>Төлөв:</strong> {activeReport.label}</Text>
                 <Text><strong>Жолооч:</strong> {selectedReportRow.driverName}</Text>
                 <Text><strong>Хугацаа:</strong> {selectedReportRow.dateRange}</Text>
                 <Text>
@@ -648,10 +637,10 @@ export default function DeliveryPage() {
                 </Text>
                 <StatusBadge
                   record={{
-                    status: activeTab.statusIds,
+                    status: activeReport.statusIds,
                     status_name: {
-                      status: activeTab.label,
-                      color: STATUS_FALLBACK[Number(activeTab.statusIds)]?.color || 'default',
+                      status: activeReport.label,
+                      color: STATUS_FALLBACK[Number(activeReport.statusIds)]?.color || 'default',
                     },
                   } as Delivery}
                 />
@@ -659,7 +648,7 @@ export default function DeliveryPage() {
               </Space>
             </div>
 
-            <div className="report-modal-actions" style={{ marginBottom: 16, textAlign: 'right' }}>
+            <div className="report-drawer-actions" style={{ marginBottom: 16, textAlign: 'right' }}>
               <Button type="primary" icon={<PrinterOutlined />} onClick={handlePrintDetail}>
                 Хэвлэх
               </Button>
@@ -671,7 +660,7 @@ export default function DeliveryPage() {
               rowKey="id"
               pagination={false}
               size="small"
-              scroll={{ x: 'max-content', y: 480 }}
+              scroll={{ x: 'max-content' }}
               summary={() => (
                 <Table.Summary fixed>
                   <Table.Summary.Row style={{ fontWeight: 'bold', backgroundColor: '#fafafa' }}>
@@ -693,7 +682,7 @@ export default function DeliveryPage() {
             />
           </div>
         )}
-      </Modal>
+      </Drawer>
     </div>
   );
 }
