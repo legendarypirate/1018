@@ -1,7 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Table, Button, Select, DatePicker, notification, Modal, Typography, Space } from 'antd';
+import {
+  Table,
+  Button,
+  Select,
+  DatePicker,
+  notification,
+  Modal,
+  Typography,
+  Space,
+  Tabs,
+  Tag,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import { CloseOutlined, DownloadOutlined, PrinterOutlined } from '@ant-design/icons';
@@ -17,10 +28,12 @@ interface Delivery {
   status: number | string;
   price: number;
   comment: string;
+  driver_comment?: string;
   driver: { username: string };
   createdAt: string;
+  updatedAt: string;
   merchant: { username: string };
-  status_name: {
+  status_name?: {
     status: string;
     color: string;
   };
@@ -42,111 +55,158 @@ type OptionType = {
   username: string;
 };
 
+type ReportType = 'delivered' | 'cancelled' | 'returned';
+
 const SALARY_PER_DELIVERY = 7000;
 
-const reportColumns: ColumnsType<ReportRow> = [
-  {
-    title: 'Огноо',
-    dataIndex: 'dateRange',
-    key: 'dateRange',
-  },
-  {
-    title: 'Жолооч',
-    dataIndex: 'driverName',
-    key: 'driverName',
-    render: (name: string) => (
-      <span style={{ color: '#1677ff', fontWeight: 500 }}>{name}</span>
-    ),
-  },
-  {
-    title: 'Нийт хүргэлт',
-    dataIndex: 'totalDeliveries',
-    key: 'totalDeliveries',
-    render: (value: number) => value.toLocaleString(),
-  },
-  {
-    title: 'Нийт тооцоо',
-    dataIndex: 'totalPrice',
-    key: 'totalPrice',
-    render: (value: number) => value.toLocaleString() + ' ₮',
-  },
-  {
-    title: 'Цалин',
-    dataIndex: 'salary',
-    key: 'salary',
-    render: (value: number) => value.toLocaleString() + ' ₮',
-  },
-  {
-    title: 'Зөрүү',
-    dataIndex: 'difference',
-    key: 'difference',
-    render: (value: number) => value.toLocaleString() + ' ₮',
-  },
+const REPORT_TABS: { key: ReportType; label: string; statusIds: string }[] = [
+  { key: 'delivered', label: 'Хүргэгдсэн', statusIds: '3' },
+  { key: 'cancelled', label: 'Цуцалсан', statusIds: '4' },
+  { key: 'returned', label: 'Буцаасан', statusIds: '5' },
 ];
 
-const detailColumns: ColumnsType<Delivery> = [
-  {
-    title: '№',
-    key: 'index',
-    width: 50,
-    render: (_: unknown, __: Delivery, index: number) => index + 1,
-  },
-  {
-    title: 'ID',
-    dataIndex: 'id',
-    key: 'id',
-    width: 70,
-  },
-  {
-    title: 'Харилцагч',
-    key: 'merchant',
-    width: 140,
-    render: (_: unknown, record: Delivery) => record.merchant?.username || '—',
-  },
-  {
-    title: 'Утас',
-    dataIndex: 'phone',
-    key: 'phone',
-    width: 110,
-  },
-  {
-    title: 'Хаяг',
-    dataIndex: 'address',
-    key: 'address',
-    ellipsis: true,
-  },
-  {
-    title: 'Үнэ',
-    dataIndex: 'price',
-    key: 'price',
-    width: 100,
-    render: (value: number) => Number(value).toLocaleString() + ' ₮',
-  },
-  {
-    title: 'Төлөв',
-    key: 'status',
-    width: 120,
-    render: (_: unknown, record: Delivery) => record.status_name?.status || record.status,
-  },
-  {
-    title: 'Хүргэсэн огноо',
-    dataIndex: 'delivered_at',
-    key: 'delivered_at',
-    width: 150,
-    render: (value?: string) =>
-      value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—',
-  },
-  {
-    title: 'Тайлбар',
-    dataIndex: 'comment',
-    key: 'comment',
-    ellipsis: true,
-    render: (value: string) => value || '—',
-  },
-];
+const STATUS_FALLBACK: Record<number, { label: string; color: string }> = {
+  3: { label: 'Хүргэгдсэн', color: 'green' },
+  4: { label: 'Цуцалсан', color: 'red' },
+  5: { label: 'Буцаасан', color: 'orange' },
+};
+
+const getStatusMeta = (record: Delivery) => {
+  const statusId = Number(record.status);
+  const fallback = STATUS_FALLBACK[statusId];
+  return {
+    label: record.status_name?.status || fallback?.label || String(record.status),
+    color: record.status_name?.color || fallback?.color || 'default',
+  };
+};
+
+const StatusBadge = ({ record }: { record: Delivery }) => {
+  const { label, color } = getStatusMeta(record);
+  return <Tag color={color}>{label}</Tag>;
+};
+
+const buildSummaryColumns = (showSalary: boolean): ColumnsType<ReportRow> => {
+  const columns: ColumnsType<ReportRow> = [
+    {
+      title: 'Огноо',
+      dataIndex: 'dateRange',
+      key: 'dateRange',
+    },
+    {
+      title: 'Жолооч',
+      dataIndex: 'driverName',
+      key: 'driverName',
+      render: (name: string) => (
+        <span style={{ color: '#1677ff', fontWeight: 500 }}>{name}</span>
+      ),
+    },
+    {
+      title: 'Нийт хүргэлт',
+      dataIndex: 'totalDeliveries',
+      key: 'totalDeliveries',
+      render: (value: number) => value.toLocaleString(),
+    },
+    {
+      title: 'Нийт тооцоо',
+      dataIndex: 'totalPrice',
+      key: 'totalPrice',
+      render: (value: number) => value.toLocaleString() + ' ₮',
+    },
+  ];
+
+  if (showSalary) {
+    columns.push(
+      {
+        title: 'Цалин',
+        dataIndex: 'salary',
+        key: 'salary',
+        render: (value: number) => value.toLocaleString() + ' ₮',
+      },
+      {
+        title: 'Зөрүү',
+        dataIndex: 'difference',
+        key: 'difference',
+        render: (value: number) => value.toLocaleString() + ' ₮',
+      }
+    );
+  }
+
+  return columns;
+};
+
+const buildDetailColumns = (reportType: ReportType): ColumnsType<Delivery> => {
+  const dateTitle =
+    reportType === 'delivered' ? 'Хүргэсэн огноо' : 'Огноо';
+
+  return [
+    {
+      title: '№',
+      key: 'index',
+      width: 50,
+      render: (_: unknown, __: Delivery, index: number) => index + 1,
+    },
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 70,
+    },
+    {
+      title: 'Харилцагч',
+      key: 'merchant',
+      width: 140,
+      render: (_: unknown, record: Delivery) => record.merchant?.username || '—',
+    },
+    {
+      title: 'Утас',
+      dataIndex: 'phone',
+      key: 'phone',
+      width: 110,
+    },
+    {
+      title: 'Хаяг',
+      dataIndex: 'address',
+      key: 'address',
+      ellipsis: true,
+    },
+    {
+      title: 'Үнэ',
+      dataIndex: 'price',
+      key: 'price',
+      width: 100,
+      render: (value: number) => Number(value).toLocaleString() + ' ₮',
+    },
+    {
+      title: 'Төлөв',
+      key: 'status',
+      width: 130,
+      render: (_: unknown, record: Delivery) => <StatusBadge record={record} />,
+    },
+    {
+      title: dateTitle,
+      key: 'date',
+      width: 150,
+      render: (_: unknown, record: Delivery) => {
+        const value =
+          reportType === 'delivered'
+            ? record.delivered_at
+            : record.updatedAt;
+        return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
+      },
+    },
+    {
+      title: 'Тайлбар',
+      key: 'comment',
+      ellipsis: true,
+      render: (_: unknown, record: Delivery) =>
+        record.driver_comment || record.comment || '—',
+    },
+  ];
+};
 
 export default function DeliveryPage() {
   const [loading, setLoading] = useState(false);
+  const [reportType, setReportType] = useState<ReportType>('delivered');
   const [reportData, setReportData] = useState<ReportRow[]>([]);
   const [driverDeliveriesMap, setDriverDeliveriesMap] = useState<Record<string, Delivery[]>>({});
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -158,6 +218,9 @@ export default function DeliveryPage() {
 
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedReportRow, setSelectedReportRow] = useState<ReportRow | null>(null);
+
+  const activeTab = REPORT_TABS.find((tab) => tab.key === reportType)!;
+  const showSalary = reportType === 'delivered';
 
   const openNotification = (type: 'success' | 'error', messageText: string) => {
     notification.open({
@@ -213,7 +276,10 @@ export default function DeliveryPage() {
       const startDate = dateRange[0].format('YYYY-MM-DD');
       const endDate = dateRange[1].format('YYYY-MM-DD');
 
-      let deliveryUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/delivery/findAllWithDate?page=1&limit=10000&startDate=${startDate}&endDate=${endDate}`;
+      let deliveryUrl =
+        `${process.env.NEXT_PUBLIC_API_URL}/api/delivery/findAllWithDate` +
+        `?page=1&limit=10000&startDate=${startDate}&endDate=${endDate}` +
+        `&statusIds=${activeTab.statusIds}`;
 
       if (selectedDriverId) {
         deliveryUrl += `&driverId=${selectedDriverId}`;
@@ -228,12 +294,15 @@ export default function DeliveryPage() {
         throw new Error('Invalid delivery data format');
       }
 
-      const status3Deliveries = deliveryData.data.filter(
-        (d: Delivery) => d.status === 3 || d.status === '3'
-      );
+      const filteredDeliveries = deliveryData.data.filter((d: Delivery) => {
+        const statusId = Number(d.status);
+        if (reportType === 'delivered') return statusId === 3;
+        if (reportType === 'cancelled') return statusId === 4;
+        return statusId === 5;
+      });
 
       const groupedByDriver: Record<string, Delivery[]> = {};
-      status3Deliveries.forEach((delivery: Delivery) => {
+      filteredDeliveries.forEach((delivery: Delivery) => {
         const driverName = delivery.driver?.username || 'No Driver';
         if (!groupedByDriver[driverName]) {
           groupedByDriver[driverName] = [];
@@ -248,11 +317,11 @@ export default function DeliveryPage() {
             (sum, d) => sum + parseFloat(d.price.toString()),
             0
           );
-          const salary = totalDeliveries * SALARY_PER_DELIVERY;
-          const difference = totalPrice - salary;
+          const salary = showSalary ? totalDeliveries * SALARY_PER_DELIVERY : 0;
+          const difference = showSalary ? totalPrice - salary : 0;
 
           return {
-            key: driverName,
+            key: `${reportType}-${driverName}`,
             dateRange: `${startDate} ~ ${endDate}`,
             driverName,
             totalDeliveries,
@@ -276,6 +345,14 @@ export default function DeliveryPage() {
     }
   };
 
+  const handleTabChange = (key: string) => {
+    setReportType(key as ReportType);
+    setReportData([]);
+    setDriverDeliveriesMap({});
+    setDetailModalOpen(false);
+    setSelectedReportRow(null);
+  };
+
   const handleRowClick = (record: ReportRow) => {
     setSelectedReportRow(record);
     setDetailModalOpen(true);
@@ -289,6 +366,16 @@ export default function DeliveryPage() {
     if (!selectedReportRow) return [];
     return driverDeliveriesMap[selectedReportRow.driverName] || [];
   }, [selectedReportRow, driverDeliveriesMap]);
+
+  const summaryColumns = useMemo(
+    () => buildSummaryColumns(showSalary),
+    [showSalary]
+  );
+
+  const detailColumns = useMemo(
+    () => buildDetailColumns(reportType),
+    [reportType]
+  );
 
   const exportToExcel = () => {
     if (reportData.length === 0) {
@@ -308,36 +395,36 @@ export default function DeliveryPage() {
         { totalDeliveries: 0, totalPrice: 0, salary: 0, difference: 0 }
       );
 
-      const headers = ['Огноо', 'Жолооч', 'Нийт хүргэлт', 'Нийт тооцоо', 'Цалин', 'Зөрүү'];
+      const headers = showSalary
+        ? ['Огноо', 'Жолооч', 'Нийт хүргэлт', 'Нийт тооцоо', 'Цалин', 'Зөрүү']
+        : ['Огноо', 'Жолооч', 'Нийт', 'Нийт тооцоо'];
+
       const excelData = [
         headers,
-        ...reportData.map((row) => [
-          row.dateRange,
-          row.driverName,
-          row.totalDeliveries,
-          row.totalPrice,
-          row.salary,
-          row.difference,
-        ]),
-        ['Нийт', '', excelTotals.totalDeliveries, excelTotals.totalPrice, excelTotals.salary, excelTotals.difference],
+        ...reportData.map((row) =>
+          showSalary
+            ? [
+                row.dateRange,
+                row.driverName,
+                row.totalDeliveries,
+                row.totalPrice,
+                row.salary,
+                row.difference,
+              ]
+            : [row.dateRange, row.driverName, row.totalDeliveries, row.totalPrice]
+        ),
+        showSalary
+          ? ['Нийт', '', excelTotals.totalDeliveries, excelTotals.totalPrice, excelTotals.salary, excelTotals.difference]
+          : ['Нийт', '', excelTotals.totalDeliveries, excelTotals.totalPrice],
       ];
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(excelData);
-      ws['!cols'] = [
-        { wch: 25 },
-        { wch: 20 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-      ];
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Report');
+      XLSX.utils.book_append_sheet(wb, ws, activeTab.label);
 
       const startDate = dateRange[0]?.format('YYYY-MM-DD') || '';
       const endDate = dateRange[1]?.format('YYYY-MM-DD') || '';
-      const filename = `Report_${startDate}_${endDate}_driver.xlsx`;
+      const filename = `Report_${activeTab.label}_${startDate}_${endDate}.xlsx`;
 
       XLSX.writeFile(wb, filename);
       openNotification('success', 'Excel файл амжилттай экспортлогдлоо');
@@ -417,6 +504,11 @@ export default function DeliveryPage() {
           .report-detail-print-area .ant-table-tbody > tr > td {
             padding: 3px 6px !important;
           }
+          .report-detail-print-area .ant-tag {
+            border: 1px solid #d9d9d9 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
           @page {
             size: A4 landscape;
             margin: 10mm;
@@ -427,6 +519,14 @@ export default function DeliveryPage() {
       <h1 className="report-no-print" style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>
         Тайлан
       </h1>
+
+      <Tabs
+        className="report-no-print"
+        activeKey={reportType}
+        onChange={handleTabChange}
+        items={REPORT_TABS.map((tab) => ({ key: tab.key, label: tab.label }))}
+        style={{ marginBottom: 16 }}
+      />
 
       <div
         className="report-no-print"
@@ -466,19 +566,19 @@ export default function DeliveryPage() {
 
       {reportData.length > 0 && (
         <Text type="secondary" className="report-no-print" style={{ display: 'block', marginBottom: 12 }}>
-          Жолоочийн мөр дээр дарж дэлгэрэнгүй хүргэлтийн жагсаалт харах
+          Жолоочийн мөр дээр дарж {activeTab.label.toLowerCase()} хүргэлтийн дэлгэрэнгүй жагсаалт харах, хэвлэх
         </Text>
       )}
 
       <div style={{ background: '#fff', borderRadius: '4px', overflow: 'hidden' }}>
         <Table
           className="report-no-print"
-          columns={reportColumns}
+          columns={summaryColumns}
           dataSource={reportData}
           loading={loading}
           rowKey="key"
           pagination={false}
-          locale={{ emptyText: 'Тайлан байхгүй байна' }}
+          locale={{ emptyText: `${activeTab.label} тайлан байхгүй байна` }}
           onRow={(record) => ({
             onClick: () => handleRowClick(record),
             style: { cursor: 'pointer' },
@@ -494,12 +594,16 @@ export default function DeliveryPage() {
                 <Table.Summary.Cell index={3}>
                   {totals.totalPrice.toLocaleString()} ₮
                 </Table.Summary.Cell>
-                <Table.Summary.Cell index={4}>
-                  {totals.salary.toLocaleString()} ₮
-                </Table.Summary.Cell>
-                <Table.Summary.Cell index={5}>
-                  {totals.difference.toLocaleString()} ₮
-                </Table.Summary.Cell>
+                {showSalary && (
+                  <>
+                    <Table.Summary.Cell index={4}>
+                      {totals.salary.toLocaleString()} ₮
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={5}>
+                      {totals.difference.toLocaleString()} ₮
+                    </Table.Summary.Cell>
+                  </>
+                )}
               </Table.Summary.Row>
             </Table.Summary>
           )}
@@ -510,7 +614,7 @@ export default function DeliveryPage() {
         className="report-detail-modal"
         title={
           selectedReportRow
-            ? `${selectedReportRow.driverName} — дэлгэрэнгүй хүргэлт`
+            ? `${selectedReportRow.driverName} — ${activeTab.label} (${selectedReportRow.totalDeliveries})`
             : 'Дэлгэрэнгүй хүргэлт'
         }
         open={detailModalOpen}
@@ -525,18 +629,32 @@ export default function DeliveryPage() {
         {selectedReportRow && (
           <div className="report-detail-print-area">
             <div style={{ marginBottom: 16 }}>
-              <Space direction="vertical" size={2}>
+              <Space direction="vertical" size={4}>
+                <Text><strong>Тайлан:</strong> {activeTab.label}</Text>
                 <Text><strong>Жолооч:</strong> {selectedReportRow.driverName}</Text>
                 <Text><strong>Хугацаа:</strong> {selectedReportRow.dateRange}</Text>
                 <Text>
-                  <strong>Нийт хүргэлт:</strong> {selectedReportRow.totalDeliveries.toLocaleString()}
+                  <strong>Нийт:</strong> {selectedReportRow.totalDeliveries.toLocaleString()}
                   {' · '}
                   <strong>Нийт тооцоо:</strong> {selectedReportRow.totalPrice.toLocaleString()} ₮
-                  {' · '}
-                  <strong>Цалин:</strong> {selectedReportRow.salary.toLocaleString()} ₮
-                  {' · '}
-                  <strong>Зөрүү:</strong> {selectedReportRow.difference.toLocaleString()} ₮
+                  {showSalary && (
+                    <>
+                      {' · '}
+                      <strong>Цалин:</strong> {selectedReportRow.salary.toLocaleString()} ₮
+                      {' · '}
+                      <strong>Зөрүү:</strong> {selectedReportRow.difference.toLocaleString()} ₮
+                    </>
+                  )}
                 </Text>
+                <StatusBadge
+                  record={{
+                    status: activeTab.statusIds,
+                    status_name: {
+                      status: activeTab.label,
+                      color: STATUS_FALLBACK[Number(activeTab.statusIds)]?.color || 'default',
+                    },
+                  } as Delivery}
+                />
                 <Text type="secondary">Хэвлэсэн: {dayjs().format('YYYY-MM-DD HH:mm')}</Text>
               </Space>
             </div>
