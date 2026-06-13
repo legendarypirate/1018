@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Table, Select, DatePicker, Card, Statistic, Row, Col, Typography, Alert } from 'antd';
+import { Table, Select, DatePicker, Card, Statistic, Row, Col, Typography, Alert, Button, Space } from 'antd';
+import { PrinterOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { Dayjs } from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
@@ -258,10 +259,72 @@ export default function DriverReportPage() {
   const hasFilters = selectedDriverId && dateRange[0] && dateRange[1];
   const showFilters = userRole !== 3 || (userRole === 3 && selectedDriverId);
 
+  const handlePrint = () => {
+    if (!reportData) return;
+    window.print();
+  };
+
+  const dateRangeLabel =
+    dateRange[0] && dateRange[1]
+      ? `${dateRange[0].format('YYYY-MM-DD')} — ${dateRange[1].format('YYYY-MM-DD')}`
+      : '';
+
   return (
-    <div style={{ padding: '24px', minHeight: '100vh', backgroundColor: '#f0f2f5' }}>
+    <div className="summary-print-root" style={{ padding: '24px', minHeight: '100vh', backgroundColor: '#f0f2f5' }}>
+      <style>{`
+        @media print {
+          .summary-no-print {
+            display: none !important;
+          }
+          .ant-layout-sider,
+          .ant-layout-header {
+            display: none !important;
+          }
+          .ant-layout,
+          .ant-layout-content {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+          .summary-print-root {
+            padding: 0 !important;
+            min-height: auto !important;
+            background: #fff !important;
+          }
+          .summary-print-area .ant-card {
+            box-shadow: none !important;
+            border: 1px solid #d9d9d9 !important;
+            break-inside: avoid;
+          }
+          .summary-print-area .ant-table-wrapper,
+          .summary-print-area .ant-table-content,
+          .summary-print-area .ant-table-body {
+            overflow: visible !important;
+          }
+          .summary-print-area .ant-table {
+            font-size: 11px;
+          }
+          .summary-print-area .ant-table-thead > tr > th,
+          .summary-print-area .ant-table-tbody > tr > td,
+          .summary-print-area .ant-table-summary > tr > td {
+            padding: 4px 8px !important;
+            white-space: nowrap;
+          }
+          .summary-print-only {
+            display: block !important;
+          }
+          @page {
+            size: A4 landscape;
+            margin: 12mm;
+          }
+        }
+        .summary-print-only {
+          display: none;
+        }
+      `}</style>
+
       {/* Page Title and Info */}
-      <Card style={{ marginBottom: '24px' }}>
+      <Card className="summary-no-print" style={{ marginBottom: '24px' }}>
         <Title level={2} style={{ marginBottom: '8px' }}>
           Жолоочийн барааны тайлан
         </Title>
@@ -273,7 +336,7 @@ export default function DriverReportPage() {
 
       {/* Filters - Only show if driver is selected or user is not a driver */}
       {showFilters && (
-        <Card style={{ marginBottom: '24px' }}>
+        <Card className="summary-no-print" style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
             {/* Driver Selector - Hide for driver users */}
             {userRole !== 3 ? (
@@ -314,6 +377,7 @@ export default function DriverReportPage() {
       {/* Error Message */}
       {error && (
         <Alert
+          className="summary-no-print"
           message="Алдаа"
           description={error}
           type="error"
@@ -326,7 +390,24 @@ export default function DriverReportPage() {
 
       {/* Report Data */}
       {reportData && hasFilters && (
-        <div style={{ marginBottom: '24px' }}>
+        <div className="summary-print-area" style={{ marginBottom: '24px' }}>
+          <div className="summary-print-only" style={{ marginBottom: 16 }}>
+            <Title level={3} style={{ marginBottom: 8 }}>
+              Жолоочийн барааны тайлан
+            </Title>
+            <Text>Жолооч: {reportData.driverName}</Text>
+            <br />
+            <Text>Хугацаа: {dateRangeLabel}</Text>
+            <br />
+            <Text>Хэвлэсэн: {dayjs().format('YYYY-MM-DD HH:mm')}</Text>
+          </div>
+
+          <div className="summary-no-print" style={{ marginBottom: 16, textAlign: 'right' }}>
+            <Button type="primary" icon={<PrinterOutlined />} onClick={handlePrint}>
+              Хэвлэх
+            </Button>
+          </div>
+
           {/* Driver Summary Cards */}
           <Row gutter={16} style={{ marginBottom: '24px' }}>
             <Col span={6}>
@@ -352,8 +433,8 @@ export default function DriverReportPage() {
           </Row>
 
           {/* Goods Table */}
-          <Card 
-            title={`${reportData.driverName} - Барааны тайлан`}
+          <Card
+            title={`${reportData.driverName} - Барааны тайлан (${dateRangeLabel})`}
             style={{ marginBottom: '24px' }}
           >
             <Table
@@ -363,6 +444,7 @@ export default function DriverReportPage() {
               rowKey="goodsName"
               pagination={false}
               scroll={{ x: 'max-content' }}
+              className="summary-report-table"
               summary={() => {
                 const totals = calculateTotals(reportData.goods, reportData.statuses);
                 return (
@@ -393,7 +475,7 @@ export default function DriverReportPage() {
 
       {/* Empty State */}
       {!loading && !reportData && hasFilters && !error && (
-        <Card>
+        <Card className="summary-no-print">
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             Сонгосон хугацаанд мэдээлэл олдсонгүй
           </div>
@@ -402,7 +484,7 @@ export default function DriverReportPage() {
 
       {/* Initial State - Show info when filters are not set */}
       {!hasFilters && !loading && (
-        <Card>
+        <Card className="summary-no-print">
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             {userRole === 3 
               ? 'Огноо сонгоно уу'
