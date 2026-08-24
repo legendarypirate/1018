@@ -12,12 +12,17 @@ const moment = require("moment-timezone"); // <-- Add this line
 const path = require('path');
 const fs = require('fs');
 const cloudinary = require('cloudinary').v2; // Make sure cloudinary is configured
+const { DRIVER_FEE_PER_DELIVERY } = require("../constants/delivery");
+const { TIMEZONE, ubDayRange, ubTodayRange, toDateKey, isYmd } = require("../utils/timezone");
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB
   }
 });
+
+const ubDateExpr = (column) =>
+  literal(`DATE("${column}" AT TIME ZONE '${TIMEZONE}')`);
 
 
 exports.findDriverDeliveriesWithStatus = (req, res) => {
@@ -50,19 +55,19 @@ exports.findWithStatus = async (req, res) => {
     return res.status(400).send({ success: false, message: "Invalid status parameter" });
   }
 
-  // Default: last 7 days in Asia/Ulaanbaatar timezone
-  const endDate = moment.tz("Asia/Ulaanbaatar").endOf("day").toDate(); // Today 23:59:59
-  const startDate = moment.tz("Asia/Ulaanbaatar").subtract(6, 'days').startOf("day").toDate(); 
-  // 7 days total: today + previous 6 days
+  // Same window as the dashboard: today in Asia/Ulaanbaatar
+  const { start, end } = ubTodayRange();
+  const dateField = status === 3 ? "delivered_at" : "updatedAt";
 
   try {
     const data = await Delivery.findAll({
       where: {
         driver_id: driverId,
         status: status,
-        createdAt: {
-          [Op.gte]: startDate,
-          [Op.lte]: endDate,
+        is_deleted: false,
+        [dateField]: {
+          [Op.gte]: start,
+          [Op.lte]: end,
         }
       },
       include: [
@@ -94,18 +99,19 @@ exports.findWithStatus = async (req, res) => {
 
 exports.findDeliveryDone = (req, res) => {
   const driverId = req.params.id;
+  const { startDate, endDate } = req.query;
 
-  // Calculate start and end of today (local time)
-  const now = new Date();
-  const startOfToday = new Date(now.setHours(0, 0, 0, 0));
-  const endOfToday = new Date(now.setHours(23, 59, 59, 999));
+  const range =
+    isYmd(startDate) && isYmd(endDate)
+      ? ubDayRange(startDate, endDate)
+      : ubTodayRange();
 
-  // Build where clause
   const whereClause = {
     driver_id: driverId,
     status: { [Op.in]: [3, 4, 5] },
+    is_deleted: false,
     delivered_at: {
-      [Op.between]: [startOfToday, endOfToday]
+      [Op.between]: [range.start, range.end]
     }
   };
 
@@ -142,18 +148,15 @@ exports.findMerchantDelivery = (req, res) => {
     return res.status(400).send({ success: false, message: "Missing user_id" });
   }
 
-  // Current timestamp in Ulaanbaatar time
-  const now = new Date();
-  const ulaanbaatarOffset = 8 * 60; // +8 hours
-  const localNow = new Date(now.getTime() + ulaanbaatarOffset * 60 * 1000);
-  const sevenDaysAgo = new Date(localNow);
-  sevenDaysAgo.setDate(localNow.getDate() - 7);
+  const end = moment.tz(TIMEZONE).endOf("day").toDate();
+  const start = moment.tz(TIMEZONE).subtract(6, "days").startOf("day").toDate();
 
   Delivery.findAll({
     where: {
       merchant_id: userId,
+      is_deleted: false,
       createdAt: {
-        [Op.between]: [sevenDaysAgo, localNow],
+        [Op.between]: [start, end],
       },
     },
     order: [["id", "DESC"]],
@@ -187,9 +190,7 @@ exports.findByDeliverId = async (req, res) => {
   exports.getStatusCountsByDriver = async (req, res) => {
     const driverId = req.params.driver_id;
   
-    const now = new Date();
-    const startOfDay = new Date(now.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(now.setHours(23, 59, 59, 999));
+    const { start, end } = ubTodayRange();
   
     try {
       const statuses = await Status.findAll({
@@ -198,13 +199,14 @@ exports.findByDeliverId = async (req, res) => {
           'status',
           'color',
           [
-            // Count matching deliveries for this status and driver for today
+            // Count matching deliveries for this status and driver for today (UB)
             literal(`(
               SELECT COUNT(*)
               FROM deliveries AS d
               WHERE d.status = status.id
-                AND d.driver_id = ${driverId}
-                AND d."createdAt" BETWEEN '${startOfDay.toISOString()}' AND '${endOfDay.toISOString()}'
+                AND d.driver_id = ${parseInt(driverId, 10)}
+                AND d.is_deleted = false
+                AND d."createdAt" BETWEEN '${start.toISOString()}' AND '${end.toISOString()}'
             )`),
             'count'
           ]
@@ -223,64 +225,81 @@ exports.findByDeliverId = async (req, res) => {
 exports.report = async (req, res) => {
   const { driver_id, start_date, end_date } = req.query;
 
-  if (!start_date || !end_date) {
-    return res.status(400).json({ success: false, message: 'start_date and end_date are required' });
+  if (!isYmd(start_date) || !isYmd(end_date)) {
+    return res.status(400).json({ success: false, message: 'start_date and end_date are required (YYYY-MM-DD)' });
   }
 
   try {
-    // Build where clauses
-    const driverFilter = driver_id ? { driver_id } : {};
+    const driverFilter = {
+      ...(driver_id ? { driver_id } : {}),
+      is_deleted: false,
+    };
+    const { start, end } = ubDayRange(start_date, end_date);
 
-    // 1️⃣ Total deliveries per local date based on createdAt
+    // Assigned that UB day (createdAt)
     const totalDeliveries = await Delivery.findAll({
-      where: driverFilter,
+      where: {
+        ...driverFilter,
+        createdAt: { [Op.between]: [start, end] },
+      },
       attributes: [
-        [literal(`DATE("createdAt" AT TIME ZONE 'Asia/Ulaanbaatar')`), 'date'],
+        [ubDateExpr('createdAt'), 'date'],
         [fn('COUNT', col('id')), 'total_deliveries'],
       ],
-      having: literal(`DATE("createdAt" AT TIME ZONE 'Asia/Ulaanbaatar') BETWEEN '${start_date}' AND '${end_date}'`),
-      group: [literal(`DATE("createdAt" AT TIME ZONE 'Asia/Ulaanbaatar')`)],
+      group: [ubDateExpr('createdAt')],
       raw: true,
     });
 
-    // 2️⃣ Delivered stats per local date based on delivered_at
+    // Completed that UB day (status 3, delivered_at) — salary = count × 8000
     const deliveredStats = await Delivery.findAll({
       where: {
         ...driverFilter,
         status: 3,
-        delivered_at: { [Op.between]: [new Date(`${start_date}T00:00:00+08:00`), new Date(`${end_date}T23:59:59+08:00`)] },
+        delivered_at: { [Op.between]: [start, end] },
       },
       attributes: [
-        [fn('DATE', col('delivered_at')), 'date'],
+        [ubDateExpr('delivered_at'), 'date'],
         [fn('COUNT', col('id')), 'delivered_count'],
         [fn('SUM', col('price')), 'delivered_total_price'],
-        [literal('COUNT(*) * 4000'), 'for_driver'],
-        [literal('SUM(price) - (COUNT(*) * 4000)'), 'driver_margin'],
+        [literal(`COUNT(*) * ${DRIVER_FEE_PER_DELIVERY}`), 'for_driver'],
+        [literal(`SUM(price) - (COUNT(*) * ${DRIVER_FEE_PER_DELIVERY})`), 'driver_margin'],
       ],
-      group: [fn('DATE', col('delivered_at'))],
+      group: [ubDateExpr('delivered_at')],
       raw: true,
     });
 
-    // 3️⃣ Merge by date
-    const resultMap = {};
-    totalDeliveries.forEach(item => {
-      resultMap[item.date] = { total_deliveries: parseInt(item.total_deliveries) };
-    });
-    deliveredStats.forEach(item => {
-      if (!resultMap[item.date]) resultMap[item.date] = {};
-      resultMap[item.date] = { ...resultMap[item.date], ...item };
+    const emptyRow = () => ({
+      total_deliveries: 0,
+      delivered_count: 0,
+      delivered_total_price: 0,
+      for_driver: 0,
+      driver_margin: 0,
     });
 
-    // 4️⃣ Convert to array, sort DESC
+    const resultMap = {};
+    totalDeliveries.forEach((item) => {
+      const date = toDateKey(item.date);
+      if (!date) return;
+      resultMap[date] = {
+        ...emptyRow(),
+        total_deliveries: parseInt(item.total_deliveries, 10) || 0,
+      };
+    });
+    deliveredStats.forEach((item) => {
+      const date = toDateKey(item.date);
+      if (!date) return;
+      if (!resultMap[date]) resultMap[date] = emptyRow();
+      resultMap[date].delivered_count = parseInt(item.delivered_count, 10) || 0;
+      resultMap[date].delivered_total_price = parseFloat(item.delivered_total_price) || 0;
+      resultMap[date].for_driver = parseInt(item.for_driver, 10) || 0;
+      resultMap[date].driver_margin = parseFloat(item.driver_margin) || 0;
+    });
+
     const finalData = Object.keys(resultMap)
-      .sort((a, b) => new Date(b) - new Date(a))
-      .map(date => ({
+      .sort((a, b) => (a < b ? 1 : -1))
+      .map((date) => ({
         date,
-        total_deliveries: resultMap[date].total_deliveries || 0,
-        delivered_count: resultMap[date].delivered_count || '0',
-        delivered_total_price: resultMap[date].delivered_total_price || '0',
-        for_driver: resultMap[date].for_driver || '0',
-        driver_margin: resultMap[date].driver_margin || '0',
+        ...resultMap[date],
       }));
 
     return res.json({ success: true, data: finalData });
@@ -422,9 +441,7 @@ exports.completeDelivery = async (req, res) => {
     return res.status(400).json({ success: false, message: 'driver_id is required' });
   }
 
-  const today = new Date();
-  const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-  const endOfDay   = new Date(today.setHours(23, 59, 59, 999));
+  const { start, end } = ubTodayRange();
 
   try {
     // 1️⃣ get all statuses
@@ -433,12 +450,13 @@ exports.completeDelivery = async (req, res) => {
       raw: true,
     });
 
-    // 2️⃣ get deliveries where status = 3, filter by delivered_at today
+    // 2️⃣ get deliveries where status = 3, filter by delivered_at today (UB)
     const deliveredCounts = await Delivery.findAll({
       where: {
         driver_id: driverId,
         status: 3,
-        delivered_at: { [Op.between]: [startOfDay, endOfDay] },
+        is_deleted: false,
+        delivered_at: { [Op.between]: [start, end] },
       },
       attributes: [
         'status',
@@ -453,7 +471,8 @@ exports.completeDelivery = async (req, res) => {
       where: {
         driver_id: driverId,
         status: { [Op.ne]: 3 },
-        updatedAt: { [Op.between]: [startOfDay, endOfDay] },
+        is_deleted: false,
+        updatedAt: { [Op.between]: [start, end] },
       },
       attributes: [
         'status',
@@ -498,9 +517,7 @@ exports.completeDelivery = async (req, res) => {
       return res.status(400).json({ success: false, message: 'driver_id is required' });
     }
   
-    const today = new Date();
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay   = new Date(today.setHours(23, 59, 59, 999));
+    const { start, end } = ubTodayRange();
   
     try {
       /* 1️⃣  all statuses */
@@ -509,11 +526,12 @@ exports.completeDelivery = async (req, res) => {
         raw: true,
       });
   
-      /* 2️⃣  deliveries grouped by status id, today only */
+      /* 2️⃣  deliveries grouped by status id, today only (UB) */
       const deliveries = await Delivery.findAll({
         where: {
           merchant_id: driverId,
-          createdAt: { [Op.between]: [startOfDay, endOfDay] },
+          is_deleted: false,
+          createdAt: { [Op.between]: [start, end] },
         },
         attributes: [
           'status',
@@ -552,18 +570,15 @@ exports.findWithStatusCustomer = (req, res) => {
     return res.status(400).send({ success: false, message: "Invalid merchant or status parameter" });
   }
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
+  const { start, end } = ubTodayRange();
 
   Delivery.findAll({
     where: {
       merchant_id: merchantId,
       status: status,
+      is_deleted: false,
       createdAt: {
-        [Op.between]: [startOfToday, endOfToday]
+        [Op.between]: [start, end]
       }
     }
   })

@@ -7,6 +7,7 @@ const Order = db.orders;
 const Good = db.goods;
 const DeliveryItem = db.delivery_items;
 const cloudinary = require('../config/cloudinary');
+const { ubDayRange, ubTodayRange, isYmd } = require("../utils/timezone");
 
 exports.upload = async (req, res) => {
   try {
@@ -176,21 +177,17 @@ exports.driverStatsByStatus = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // Build date range condition
+    // Build date range condition (Asia/Ulaanbaatar)
     const dateCondition = {};
-    if (startDate && endDate) {
-      const start = new Date(`${startDate}T00:00:00+08:00`);
-      const end = new Date(`${endDate}T23:59:59+08:00`);
+    if (isYmd(startDate) && isYmd(endDate)) {
+      const { start, end } = ubDayRange(startDate, endDate);
       dateCondition.createdAt = {
         [Op.between]: [start, end],
       };
     } else {
-      // Default to today if no dates provided
-      const now = new Date();
-      const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-      const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+      const { start, end } = ubTodayRange();
       dateCondition.createdAt = {
-        [Op.between]: [todayStart, todayEnd],
+        [Op.between]: [start, end],
       };
     }
 
@@ -254,21 +251,17 @@ exports.deliveryStatsByStatus = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // Build date range condition
+    // Build date range condition (Asia/Ulaanbaatar)
     const dateCondition = {};
-    if (startDate && endDate) {
-      const start = new Date(`${startDate}T00:00:00+08:00`);
-      const end = new Date(`${endDate}T23:59:59+08:00`);
+    if (isYmd(startDate) && isYmd(endDate)) {
+      const { start, end } = ubDayRange(startDate, endDate);
       dateCondition.createdAt = {
         [Op.between]: [start, end],
       };
     } else {
-      // Default to today if no dates provided
-      const now = new Date();
-      const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-      const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+      const { start, end } = ubTodayRange();
       dateCondition.createdAt = {
-        [Op.between]: [todayStart, todayEnd],
+        [Op.between]: [start, end],
       };
     }
 
@@ -303,14 +296,11 @@ exports.statistic = async (req, res) => {
   try {
     const merchantId = req.query.merchant_id;
 
-    const now = new Date();
-    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-    const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
-    
+    const { start, end } = ubTodayRange();
 
-    // Define base where condition
+    // Define base where condition (today in Asia/Ulaanbaatar)
     const dateCondition = {
-      createdAt: { [Op.between]: [todayStart, todayEnd] },
+      createdAt: { [Op.between]: [start, end] },
     };
 
     // Add merchant_id if exists

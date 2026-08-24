@@ -61,7 +61,7 @@ const REPORT_OPTIONS: { label: string; statusId: number }[] = [
   { label: 'Буцаасан', statusId: 5 },
 ];
 
-const SALARY_PER_DELIVERY = 7000;
+const SALARY_PER_DELIVERY = 8000;
 
 const STATUS_FALLBACK: Record<number, { label: string; color: string }> = {
   3: { label: 'Хүргэгдсэн', color: 'green' },

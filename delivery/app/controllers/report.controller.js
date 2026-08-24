@@ -8,6 +8,7 @@ const User = db.users; // Add this
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
+const { DRIVER_FEE_PER_DELIVERY } = require("../constants/delivery");
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -43,7 +44,7 @@ exports.getTotalPriceByDriverAndDate = async (req, res) => {
     // 2. Calculate values
     const totalPrice = deliveries.reduce((sum, d) => sum + parseFloat(d.price), 0);
     const deliveryCount = deliveries.length;
-    const driverFee = 4000 * deliveryCount;
+    const driverFee = DRIVER_FEE_PER_DELIVERY * deliveryCount;
     const accountAmount = totalPrice - driverFee;
     const driverId = deliveries[0].driver_id;
 
@@ -126,7 +127,7 @@ exports.getTotalPriceByMerchantAndDate = async (req, res) => {
     // 2. Calculate values
     const totalPrice = deliveries.reduce((sum, d) => sum + parseFloat(d.price), 0);
     const deliveryCount = deliveries.length;
-    const driverFee = 4000 * deliveryCount;
+    const driverFee = DRIVER_FEE_PER_DELIVERY * deliveryCount;
     const accountAmount = totalPrice - driverFee;
     const merchantId = deliveries[0].merchant_id;
 
