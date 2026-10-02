@@ -23,6 +23,8 @@ const { Text } = Typography;
 
 interface Delivery {
   id: number;
+  goods?: string;
+  number?: string | number;
   phone: string;
   address: string;
   status: number | string;
@@ -141,16 +143,25 @@ const buildDetailColumns = (): ColumnsType<Delivery> => {
       render: (_: unknown, __: Delivery, index: number) => index + 1,
     },
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 70,
-    },
-    {
       title: 'Харилцагч',
       key: 'merchant',
       width: 140,
       render: (_: unknown, record: Delivery) => record.merchant?.username || '—',
+    },
+    {
+      title: 'Бараа',
+      dataIndex: 'goods',
+      key: 'goods',
+      width: 140,
+      render: (value?: string) => value || '—',
+    },
+    {
+      title: 'Барааны тоо',
+      dataIndex: 'number',
+      key: 'number',
+      width: 100,
+      render: (value?: string | number) =>
+        value === null || value === undefined || value === '' ? '—' : value,
     },
     {
       title: 'Утас',
@@ -664,16 +675,16 @@ export default function DeliveryPage() {
               summary={() => (
                 <Table.Summary fixed>
                   <Table.Summary.Row style={{ fontWeight: 'bold', backgroundColor: '#fafafa' }}>
-                    <Table.Summary.Cell index={0} colSpan={5}>
+                    <Table.Summary.Cell index={0} colSpan={6}>
                       Нийт
                     </Table.Summary.Cell>
-                    <Table.Summary.Cell index={5}>
+                    <Table.Summary.Cell index={6}>
                       {detailDeliveries
                         .reduce((sum, d) => sum + Number(d.price), 0)
                         .toLocaleString()}{' '}
                       ₮
                     </Table.Summary.Cell>
-                    <Table.Summary.Cell index={6} colSpan={3}>
+                    <Table.Summary.Cell index={7} colSpan={3}>
                       {detailDeliveries.length} хүргэлт
                     </Table.Summary.Cell>
                   </Table.Summary.Row>
