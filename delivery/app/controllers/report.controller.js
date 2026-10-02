@@ -4,6 +4,7 @@ const Op = db.Sequelize.Op;
 const Summary = db.summaries; // Add this
 const Status = db.statuses; // Add this
 const User = db.users; // Add this
+const emailService = require("../services/email.service");
 
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
@@ -13,6 +14,70 @@ const { DRIVER_FEE_PER_DELIVERY } = require("../constants/delivery");
 dayjs.extend(utc);
 dayjs.extend(timezone);
 const { sequelize } = require('../models'); // adjust path if needed
+
+exports.sendMerchantReportEmails = async (req, res) => {
+  const { reports } = req.body;
+
+  if (!Array.isArray(reports) || reports.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "A non-empty reports array is required.",
+    });
+  }
+
+  const results = [];
+
+  for (const report of reports) {
+    const merchantId = Number(report.merchantId);
+    try {
+      if (!merchantId) {
+        throw new Error("Missing merchantId");
+      }
+
+      const merchant = await User.findOne({
+        where: { id: merchantId, role_id: 2 },
+      });
+      if (!merchant) {
+        throw new Error("Merchant not found");
+      }
+      if (!merchant.email || !String(merchant.email).trim()) {
+        throw new Error("Merchant has no email address");
+      }
+
+      await emailService.sendMerchantReportEmail(
+        String(merchant.email).trim(),
+        merchant.username,
+        report
+      );
+      results.push({
+        merchantId,
+        name: merchant.username,
+        email: merchant.email,
+        success: true,
+      });
+    } catch (error) {
+      console.error(`Report email failed for merchant ${merchantId}:`, error);
+      results.push({
+        merchantId: merchantId || null,
+        name: report.name,
+        success: false,
+        message: error.message || "Failed to send email",
+      });
+    }
+  }
+
+  const sent = results.filter((result) => result.success).length;
+  const failed = results.length - sent;
+
+  return res.status(failed === results.length ? 500 : 200).json({
+    success: failed === 0,
+    message:
+      failed === 0
+        ? `${sent} имэйл амжилттай илгээгдлээ.`
+        : `${sent} имэйл илгээгдэж, ${failed} амжилтгүй боллоо.`,
+    results,
+  });
+};
 
 exports.getTotalPriceByDriverAndDate = async (req, res) => {
   const { delivery_ids } = req.body;

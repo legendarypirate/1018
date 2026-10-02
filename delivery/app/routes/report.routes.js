@@ -8,6 +8,7 @@ module.exports = app => {
     router.post("/driver", report.getTotalPriceByDriverAndDate);
   
     router.post("/merchant", report.getTotalPriceByMerchantAndDate);
+    router.post("/send-merchant-emails", report.sendMerchantReportEmails);
 
     // Get driver goods report by status
     router.get("/driver-goods", report.getDriverGoodsReport);

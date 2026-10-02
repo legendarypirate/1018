@@ -72,7 +72,7 @@ exports.allocateDeliveries = async (req, res) => {
   //80989497
 
   exports.findAll = async (req, res) => {
-    const { merchant_id, phone, start_date, end_date } = req.query;
+    const { merchant_id, driver_id, phone, start_date, end_date } = req.query;
     const statusIds = req.query.status_ids ? req.query.status_ids.split(',').map(Number) : [];
   
     // Build dynamic filter condition
@@ -80,6 +80,10 @@ exports.allocateDeliveries = async (req, res) => {
   
     if (merchant_id) {
       condition.merchant_id = merchant_id;
+    }
+
+    if (driver_id) {
+      condition.driver_id = driver_id;
     }
   
     if (statusIds.length > 0) {
@@ -92,15 +96,18 @@ exports.allocateDeliveries = async (req, res) => {
   
     if (start_date && end_date) {
       condition.createdAt = {
-        [Op.between]: [new Date(start_date), new Date(end_date)],
+        [Op.between]: [
+          new Date(`${start_date}T00:00:00+08:00`),
+          new Date(`${end_date}T23:59:59+08:00`),
+        ],
       };
     } else if (start_date) {
       condition.createdAt = {
-        [Op.gte]: new Date(start_date),
+        [Op.gte]: new Date(`${start_date}T00:00:00+08:00`),
       };
     } else if (end_date) {
       condition.createdAt = {
-        [Op.lte]: new Date(end_date),
+        [Op.lte]: new Date(`${end_date}T23:59:59+08:00`),
       };
     }
   
