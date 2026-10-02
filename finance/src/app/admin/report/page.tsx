@@ -173,7 +173,12 @@ const buildDetailColumns = (): ColumnsType<Delivery> => {
       title: 'Хаяг',
       dataIndex: 'address',
       key: 'address',
-      ellipsis: true,
+      width: 240,
+      render: (value?: string) => (
+        <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+          {value || '—'}
+        </span>
+      ),
     },
     {
       title: 'Үнэ',
@@ -203,9 +208,12 @@ const buildDetailColumns = (): ColumnsType<Delivery> => {
     {
       title: 'Тайлбар',
       key: 'comment',
-      ellipsis: true,
-      render: (_: unknown, record: Delivery) =>
-        record.driver_comment || record.comment || '—',
+      width: 200,
+      render: (_: unknown, record: Delivery) => (
+        <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+          {record.driver_comment || record.comment || '—'}
+        </span>
+      ),
     },
   ];
 };
