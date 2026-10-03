@@ -57,10 +57,16 @@ type OptionType = {
   username: string;
 };
 
-const REPORT_OPTIONS: { label: string; statusId: number }[] = [
-  { label: 'Хүргэгдсэн', statusId: 3 },
-  { label: 'Цуцалсан', statusId: 4 },
-  { label: 'Буцаасан', statusId: 5 },
+type StatusOption = {
+  id: number;
+  status: string;
+  color?: string | null;
+};
+
+const DEFAULT_STATUS_OPTIONS: StatusOption[] = [
+  { id: 3, status: 'Хүргэгдсэн', color: 'green' },
+  { id: 4, status: 'Цуцалсан', color: 'red' },
+  { id: 5, status: 'Буцаасан', color: 'orange' },
 ];
 
 const SALARY_PER_DELIVERY = 8000;
@@ -226,6 +232,7 @@ export default function DeliveryPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const [driverOptions, setDriverOptions] = useState<OptionType[]>([]);
+  const [statusOptions, setStatusOptions] = useState<StatusOption[]>(DEFAULT_STATUS_OPTIONS);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
@@ -252,16 +259,28 @@ export default function DeliveryPage() {
   useEffect(() => {
     document.title = 'Тайлан харах';
 
-    const fetchDrivers = async () => {
+    const fetchFilterOptions = async () => {
       setLoadingOptions(true);
       try {
-        const url = `${process.env.NEXT_PUBLIC_API_URL}/api/user/drivers`;
-        const response = await fetch(url);
-        const result = await response.json();
-        if (result.success && Array.isArray(result.data)) {
-          setDriverOptions(result.data);
+        const [driversResponse, statusesResponse] = await Promise.all([
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/drivers`),
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/status`),
+        ]);
+        const [driversResult, statusesResult] = await Promise.all([
+          driversResponse.json(),
+          statusesResponse.json(),
+        ]);
+
+        if (driversResult.success && Array.isArray(driversResult.data)) {
+          setDriverOptions(driversResult.data);
         } else {
           setDriverOptions([]);
+        }
+
+        if (statusesResult.success && Array.isArray(statusesResult.data)) {
+          setStatusOptions(
+            statusesResult.data.filter((status: StatusOption) => ![1, 2].includes(Number(status.id)))
+          );
         }
       } catch (error) {
         console.error('Fetch error:', error);
@@ -271,7 +290,7 @@ export default function DeliveryPage() {
       }
     };
 
-    fetchDrivers();
+    fetchFilterOptions();
   }, []);
 
   const loadReportData = async () => {
@@ -390,6 +409,21 @@ export default function DeliveryPage() {
   );
 
   const detailColumns = useMemo(() => buildDetailColumns(), []);
+
+  const statusMetaById = useMemo(
+    () =>
+      statusOptions.reduce<Record<number, { label: string; color: string }>>(
+        (result, status) => {
+          result[status.id] = {
+            label: status.status,
+            color: status.color || 'default',
+          };
+          return result;
+        },
+        { ...STATUS_FALLBACK }
+      ),
+    [statusOptions]
+  );
 
   const exportToExcel = () => {
     if (reportData.length === 0) {
@@ -533,9 +567,9 @@ export default function DeliveryPage() {
         <Checkbox.Group
           value={selectedStatusIds}
           onChange={handleStatusChange}
-          options={REPORT_OPTIONS.map((opt) => ({
-            label: opt.label,
-            value: opt.statusId,
+          options={statusOptions.map((status) => ({
+            label: status.status,
+            value: status.id,
           }))}
         />
 
@@ -642,9 +676,9 @@ export default function DeliveryPage() {
                   {selectedStatusIds.map((id) => (
                     <Tag
                       key={id}
-                      color={STATUS_FALLBACK[id]?.color || 'default'}
+                      color={statusMetaById[id]?.color || 'default'}
                     >
-                      {STATUS_FALLBACK[id]?.label || id}
+                      {statusMetaById[id]?.label || id}
                     </Tag>
                   ))}
                 </Space>
