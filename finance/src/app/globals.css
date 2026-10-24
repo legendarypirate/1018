@@ -45,3 +45,9 @@ html, body {
 .paid-row {
   background-color: #91ed85 !important; /* soft green */
 }
+
+.delivery-table-compact .ant-table-thead > tr > th,
+.delivery-table-compact .ant-table-tbody > tr > td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}

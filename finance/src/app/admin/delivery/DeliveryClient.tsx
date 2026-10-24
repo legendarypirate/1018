@@ -131,7 +131,6 @@ const [historyLoading, setHistoryLoading] = useState(false);
   const isMerchant = user?.role === 2;
   const username = typeof window !== 'undefined' ? localStorage.getItem('username') : null;
 
-  const [expandedRowKeys, setExpandedRowKeys] = React.useState<React.Key[]>([]);
   const [expandedItems, setExpandedItems] = React.useState<Record<number, Item[] | null>>({});
   const [loadingRows, setLoadingRows] = React.useState<number[]>([]);
 
@@ -533,22 +532,6 @@ const handleDistrictFilterChange = (value: number | null) => {
   setPagination((prev) => ({ ...prev, current: 1 }));
 };
   
-
-  const handleExpand = async (expanded: boolean, record: Delivery) => {
-    if (expanded) {
-      setExpandedRowKeys([record.id]); // allow only 1 expanded row
-  
-      // If items not already loaded, fetch them
-      if (!expandedItems[record.id]) {
-        setLoadingRows((prev) => [...prev, record.id]);
-        const items = await fetchItemsForDelivery(record.id);
-        setExpandedItems((prev) => ({ ...prev, [record.id]: items }));
-        setLoadingRows((prev) => prev.filter((id) => id !== record.id));
-      }
-    } else {
-      setExpandedRowKeys([]);
-    }
-  };
 
   React.useEffect(() => {
     
@@ -1196,6 +1179,8 @@ const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
       </Space>
 
       <Table
+  className="delivery-table-compact"
+  size="small"
   rowSelection={rowSelection}
   columns={columns}
   dataSource={deliveryData}
@@ -1215,41 +1200,6 @@ const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     },
   }}
   rowClassName={(record) => (record.is_paid ? 'paid-row' : '')}
-  expandable={{
-    expandedRowRender: (record) => {
-      if (loadingRows.includes(record.id)) {
-        return <p>Loading items...</p>;
-      }
-      const items = expandedItems[record.id];
-      if (!items || items.length === 0) return <p>No items found.</p>;
-
-      const columns = [
-        {
-          dataIndex: ['good', 'name'],
-          key: 'name',
-          render: (text: string | undefined) => text || '-',
-        },
-        {
-          dataIndex: 'quantity',
-          key: 'quantity',
-        },
-      ];    
-
-      return (
-        <Table
-          columns={columns}
-          dataSource={items}
-          pagination={false}
-          rowKey="id"
-          size="small"
-          bordered
-        />
-      );
-    },
-    expandedRowKeys,
-    onExpand: handleExpand,
-    expandRowByClick: false,
-  }}
 />
 <Drawer
   title="Хүргэлт үүсгэх"
