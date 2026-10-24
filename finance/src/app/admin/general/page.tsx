@@ -449,14 +449,16 @@ export default function ReportPage() {
           email ? email : <Text type="secondary">Имэйлгүй</Text>,
       });
     }
-    result.push(
-      {
+    if (effectiveType !== 'driver') {
+      result.push({
         title: 'Нийт хүргэлт',
         dataIndex: 'totalDeliveries',
         key: 'totalDeliveries',
         align: 'right',
         width: 115,
-      },
+      });
+    }
+    result.push(
       {
         title: 'Хүргэсэн',
         dataIndex: 'deliveredDeliveries',
@@ -472,11 +474,11 @@ export default function ReportPage() {
         width: 105,
       },
       {
-        title: 'Захиалга',
-        dataIndex: 'orderCount',
-        key: 'orderCount',
+        title: effectiveType === 'driver' ? 'Нийт хүргэлт' : 'Захиалга',
+        dataIndex: effectiveType === 'driver' ? 'totalDeliveries' : 'orderCount',
+        key: effectiveType === 'driver' ? 'totalDeliveries' : 'orderCount',
         align: 'right',
-        width: 100,
+        width: 115,
       },
       {
         title: 'Нийт тооцоо',
@@ -523,10 +525,13 @@ export default function ReportPage() {
       ...(!isCustomer && {
         [effectiveType === 'driver' ? 'Жолооч' : 'Харилцагч']: row.name,
       }),
-      'Нийт хүргэлт': row.totalDeliveries,
+      ...(effectiveType !== 'driver' && {
+        'Нийт хүргэлт': row.totalDeliveries,
+      }),
       Хүргэсэн: row.deliveredDeliveries,
       Буцаасан: row.status5Deliveries,
-      Захиалга: row.orderCount,
+      [effectiveType === 'driver' ? 'Нийт хүргэлт' : 'Захиалга']:
+        effectiveType === 'driver' ? row.totalDeliveries : row.orderCount,
       'Нийт тооцоо': row.totalPrice,
       Тооцоо: row.salary,
       Зөрүү: row.totalPrice - row.salary,

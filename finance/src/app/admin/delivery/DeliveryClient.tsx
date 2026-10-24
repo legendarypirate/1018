@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect, Suspense } from 'react';
 import { Table, Button, Space, Input, DatePicker, Drawer, Form, Select, Tag, Modal, Checkbox, message, InputNumber, List, Row, Col, Tooltip, Image, App } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { EditOutlined, DeleteOutlined,PlusOutlined, EyeOutlined} from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PlusOutlined, HistoryOutlined, PictureOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
@@ -306,32 +306,32 @@ const baseColumns: ColumnsType<Delivery> = [
     title: 'Үйлдэл',
     key: 'actions',
     render: (_: any, record: Delivery) => (
-      <Space>
- {record.image && (
+      <Space size="small">
+        {record.image && (
+          <Tooltip title="Зураг">
             <Button
-              type="link"
-              icon={<EyeOutlined />}
+              type="text"
+              icon={<PictureOutlined />}
               onClick={() => handleViewImage(record.image!)}
               style={{ color: '#52c41a' }}
-            >
-              Зураг
-            </Button>
-          )}
-        <Button
-          type="link"
-          icon={<EditOutlined />}
-          onClick={() => handleEditClick(record)}
-        >
-          Edit
-        </Button>
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          onClick={() => handleViewHistory(record.id)}
-          loading={historyLoading}
-        >
-          History
-        </Button>
+            />
+          </Tooltip>
+        )}
+        <Tooltip title="Засах">
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            onClick={() => handleEditClick(record)}
+          />
+        </Tooltip>
+        <Tooltip title="Түүх">
+          <Button
+            type="text"
+            icon={<HistoryOutlined />}
+            onClick={() => handleViewHistory(record.id)}
+            loading={historyLoading}
+          />
+        </Tooltip>
       </Space>
     ),
   }
