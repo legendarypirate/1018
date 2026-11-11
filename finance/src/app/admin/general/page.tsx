@@ -342,8 +342,7 @@ export default function ReportPage() {
               ? DRIVER_FEE
               : sampleDelivery?.merchant?.report_price || MERCHANT_FEE;
           const salary =
-            (delivered.length + status5.length) * fee +
-            groupedOrders.length * ORDER_FEE;
+            delivered.length * fee + groupedOrders.length * ORDER_FEE;
 
           return {
             key: `${effectiveType}-${key}`,
